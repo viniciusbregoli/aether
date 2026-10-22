@@ -72,3 +72,19 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(parseBinding("alt-nope") == nil)
 }
 
+@Test func restoreMatchesByIdThenTitleThenApp() {
+    let saved = [
+        WindowKey(id: 1, bundleId: "term", title: "a"),
+        WindowKey(id: 2, bundleId: "web", title: "docs"),
+        WindowKey(id: 3, bundleId: "web", title: "mail"),
+        WindowKey(id: 4, bundleId: "gone", title: "x"),
+    ]
+    let alive = [
+        WindowKey(id: 1, bundleId: "term", title: "renamed"),
+        WindowKey(id: 20, bundleId: "web", title: "other"),
+        WindowKey(id: 30, bundleId: "web", title: "docs"),
+    ]
+    #expect(match(saved: saved, alive: alive) == [0: 1, 1: 30, 2: 20])
+    // A recycled id from another app must not steal the slot.
+    #expect(match(saved: [WindowKey(id: 9, bundleId: "a", title: "")], alive: [WindowKey(id: 9, bundleId: "b", title: "")]).isEmpty)
+}
