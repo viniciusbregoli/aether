@@ -38,6 +38,14 @@ import Testing
     #expect(throws: ConfigError.self) { try Settings.parse("gaps-inner = ") }
 }
 
+@Test func workspaceNamesMustBeNonemptyAndUnique() throws {
+    #expect(throws: ConfigError.self) { try Settings.parse("workspaces = []") }
+    #expect(throws: ConfigError.self) { try Settings.parse("workspaces = ['1', '1']") }
+    #expect(throws: ConfigError.self) { try Settings.parse("workspaces = ['1', '2', '1']") }
+    #expect(try Settings.parse("workspaces = ['code']").workspaces == ["code"])
+    #expect(try Settings.parse("workspaces = ['code', 'Code']").workspaces == ["code", "Code"])
+}
+
 @Test func parsesAerospaceCommands() {
     #expect(parseCommand("resize smart -50") == .resize(-50))
     #expect(parseCommand("resize +50") == .resize(50))
