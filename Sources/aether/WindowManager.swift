@@ -306,7 +306,7 @@ final class WindowManager {
         previous = current
         current = ws
         layout(slide: slide)
-        focus(target ?? lastFocus[ws] ?? workspaces[ws].first)
+        focus(windowToFocus(in: workspaces[ws], preferred: target, remembered: lastFocus[ws]))
     }
 
     /// With nothing to focus, aether takes focus itself so keys don't go to a parked window.
@@ -322,9 +322,10 @@ final class WindowManager {
         guard let id = focusedId, let from = workspace(of: id), from != ws, workspaces.indices.contains(ws) else { return }
         workspaces[from].removeAll { $0 == id }
         workspaces[ws].append(id)
+        if lastFocus[from] == id { lastFocus[from] = nil }
         lastFocus[ws] = id
         layout()
-        focus(lastFocus[current].flatMap { workspaces[current].contains($0) ? $0 : nil } ?? workspaces[current].first)
+        focus(windowToFocus(in: workspaces[current], remembered: lastFocus[current]))
     }
 
     private func toggleFloating() {
