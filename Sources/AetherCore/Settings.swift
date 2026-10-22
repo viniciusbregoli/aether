@@ -115,8 +115,12 @@ public struct Settings: Equatable, Sendable {
             return rgba
         }
 
+        let workspaces = user.workspaces ?? base.workspaces!
+        guard !workspaces.isEmpty else { throw ConfigError(description: "workspaces must not be empty") }
+        guard Set(workspaces).count == workspaces.count else { throw ConfigError(description: "workspaces must be unique") }
+
         return Settings(
-            workspaces: user.workspaces ?? base.workspaces!,
+            workspaces: workspaces,
             gapsInner: CGFloat(user.gapsInner ?? base.gapsInner!),
             gapsOuter: CGFloat(user.gapsOuter ?? base.gapsOuter!),
             accordionPadding: CGFloat(user.accordionPadding ?? base.accordionPadding!),
