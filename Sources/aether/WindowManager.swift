@@ -153,7 +153,8 @@ final class WindowManager {
     }
 
     private var focusedId: CGWindowID? {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        // AX requests to our own process can hang (AeroSpace hit this), and aether has no windows.
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid() else { return nil }
         let window: AXUIElement? = AXUIElementCreateApplication(app.processIdentifier).get(kAXFocusedWindowAttribute)
         return window?.windowId
     }
@@ -305,7 +306,16 @@ final class WindowManager {
         previous = current
         current = ws
         layout(slide: slide)
-        if let id = target ?? lastFocus[ws] ?? workspaces[ws].first { windows[id]?.focus() }
+        focus(target ?? lastFocus[ws] ?? workspaces[ws].first)
+    }
+
+    /// With nothing to focus, aether takes focus itself so keys don't go to a parked window.
+    private func focus(_ id: CGWindowID?) {
+        if let window = id.flatMap({ windows[$0] }) {
+            window.focus()
+        } else {
+            NSApp.activate()
+        }
     }
 
     private func moveFocused(to ws: Int) {
@@ -314,9 +324,7 @@ final class WindowManager {
         workspaces[ws].append(id)
         lastFocus[ws] = id
         layout()
-        if let next = lastFocus[current].flatMap({ workspaces[current].contains($0) ? $0 : nil }) ?? workspaces[current].first {
-            windows[next]?.focus()
-        }
+        focus(lastFocus[current].flatMap { workspaces[current].contains($0) ? $0 : nil } ?? workspaces[current].first)
     }
 
     private func toggleFloating() {
@@ -334,7 +342,11 @@ final class WindowManager {
         let screen = screenRect
         for id in parked {
             guard let window = windows[id], let frame = window.frame else { continue }
-            window.setPosition(CGPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
+            if let saved = floatingFrames[id] {
+                window.setPosition(saved.origin)
+            } else {
+                window.setPosition(CGPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
+            }
         }
         parked.removeAll()
     }
