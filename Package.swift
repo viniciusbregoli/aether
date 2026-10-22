@@ -7,6 +7,7 @@ let package = Package(
     targets: [
         // Pure geometry, no AppKit, so it can be unit tested.
         .target(name: "AetherCore"),
+        .testTarget(name: "AetherCoreTests", dependencies: ["AetherCore"]),
     ],
     swiftLanguageModes: [.v5]
 )
