@@ -26,6 +26,8 @@ final class WindowManager {
     private var followFocusOnRefresh = false
     /// App activated through Dock, Spotlight or Cmd-Tab since the last refresh.
     private var activatedPid: pid_t?
+    /// cmd-N sent to this app for this workspace, until its window shows up or the fallback runs.
+    private var pendingNewWindow: (pid: pid_t, workspace: Int)?
     private var mode = "main"
     private var pendingRestore: SavedState?
     private var lastSaved: Data?
@@ -122,6 +124,7 @@ final class WindowManager {
             let index = focused.flatMap(ws.firstIndex(of:)).map { $0 + 1 } ?? ws.count
             workspaces[current].insert(id, at: index)
             let window = alive[id]!
+            if pendingNewWindow?.pid == window.pid { pendingNewWindow = nil }
             if Config.floatingApps.contains(window.bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
         }
         windows = alive
@@ -130,13 +133,20 @@ final class WindowManager {
         activatedPid = nil
         if followFocus, let focused, let ws = workspace(of: focused), ws != current {
             let pid = windows[focused]?.pid
-            if let pid, pid == activated, !Config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
+            if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
+                // The app refocused its old window while we wait for the one we asked for: stay here.
+            } else if let pid, pid == activated, !Config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
                !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
-                // for a new window here. Apps that ignore cmd-N fall back to jumping to their window.
+                // for a new window here. Apps that ignore cmd-N fall back to jumping to their window,
+                // unless the user has already moved on.
                 requestNewWindow(pid)
+                let request = (pid: pid, workspace: current)
+                pendingNewWindow = request
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-                    if !workspaces[current].contains(where: { windows[$0]?.pid == pid }), let ws = workspace(of: focused) {
+                    guard let pending = pendingNewWindow, pending == request else { return }
+                    pendingNewWindow = nil
+                    if current == request.workspace, let ws = workspace(of: focused) {
                         switchTo(ws, focusing: focused)
                     }
                 }
