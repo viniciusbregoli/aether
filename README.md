@@ -12,6 +12,7 @@ A tiling window manager for macOS with AeroSpace's model and Hyprland's look, bu
 - Rotating gradient border around the focused window
 - Current workspace shown in the menu bar
 - Remembers which window was on which workspace across restarts
+- Opening an app whose windows are all on other workspaces opens a new window on the current one
 
 ## Run
 

@@ -1,6 +1,7 @@
 import AetherCore
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 
 // The only private API, same as AeroSpace: maps an AX window element to its WindowServer id.
 @_silgen_name("_AXUIElementGetWindow")
@@ -76,6 +77,15 @@ final class Window {
         AXUIElementSetAttributeValue(ax, kAXMainAttribute as CFString, kCFBooleanTrue)
         AXUIElementPerformAction(ax, kAXRaiseAction as CFString)
         NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+}
+
+/// Sends cmd-N to an app, which is "new window" in most of them.
+func requestNewWindow(_ pid: pid_t) {
+    for keyDown in [true, false] {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_N), keyDown: keyDown)
+        event?.flags = .maskCommand
+        event?.postToPid(pid)
     }
 }
 
