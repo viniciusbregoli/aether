@@ -11,7 +11,7 @@ final class WindowManager {
 
     private var windows: [CGWindowID: Window] = [:]
     /// Window order per workspace is the dwindle order.
-    private var workspaces = Array(repeating: [CGWindowID](), count: Config.workspaces.count)
+    private var workspaces = Array(repeating: [CGWindowID](), count: config.workspaces.count)
     private var current = 0
     private var previous: Int?
     private var layouts: [Int: Layout] = [:]
@@ -125,7 +125,7 @@ final class WindowManager {
             workspaces[current].insert(id, at: index)
             let window = alive[id]!
             if pendingNewWindow?.pid == window.pid { pendingNewWindow = nil }
-            if Config.floatingApps.contains(window.bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
+            if config.floatingApps.contains(window.bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
         }
         windows = alive
 
@@ -135,7 +135,7 @@ final class WindowManager {
             let pid = windows[focused]?.pid
             if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
                 // The app refocused its old window while we wait for the one we asked for: stay here.
-            } else if let pid, pid == activated, !Config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
+            } else if let pid, pid == activated, !config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
                !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
                 // for a new window here. Apps that ignore cmd-N fall back to jumping to their window,
@@ -211,17 +211,17 @@ final class WindowManager {
     }
 
     private var workArea: CGRect {
-        screenRect.insetBy(dx: Config.gapsOut, dy: Config.gapsOut)
+        screenRect.insetBy(dx: config.gapsOuter, dy: config.gapsOuter)
     }
 
     private var tiledFrames: [CGRect] {
         let ids = tiled
         switch layouts[current] ?? .dwindle {
         case .dwindle:
-            return dwindle(count: ids.count, in: workArea, gap: Config.gapsIn, ratios: ratios[current] ?? [])
+            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner, ratios: ratios[current] ?? [])
         case .accordion:
             let focused = lastFocus[current].flatMap(ids.firstIndex(of:)) ?? 0
-            return accordion(count: ids.count, focused: focused, in: workArea, padding: Config.accordionPadding)
+            return accordion(count: ids.count, focused: focused, in: workArea, padding: config.accordionPadding)
         }
     }
 
@@ -255,8 +255,8 @@ final class WindowManager {
     }
 
     private func updateTray() {
-        let occupied = Config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { Config.workspaces[$0] }
-        tray.update(current: Config.workspaces[current], occupied: occupied, mode: mode,
+        let occupied = config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { config.workspaces[$0] }
+        tray.update(current: config.workspaces[current], occupied: occupied, mode: mode,
                     switchTo: { [unowned self] in execute(.workspace($0)) }, quit: { [unowned self] in execute(.quit) })
     }
 
@@ -280,8 +280,8 @@ final class WindowManager {
 
     func execute(_ action: Action) {
         switch action {
-        case .workspace(let name): Config.workspaces.firstIndex(of: name).map { switchTo($0) }
-        case .moveToWorkspace(let name): Config.workspaces.firstIndex(of: name).map(moveFocused(to:))
+        case .workspace(let name): config.workspaces.firstIndex(of: name).map { switchTo($0) }
+        case .moveToWorkspace(let name): config.workspaces.firstIndex(of: name).map(moveFocused(to:))
         case .move(let direction): swap(direction)
         case .resize(let delta): resize(by: delta)
         case .layout(let layout):
@@ -301,7 +301,7 @@ final class WindowManager {
             fullscreen.subtract(workspaces[current])
             layout()
         case .closeAllButCurrent: closeAllButFocused()
-        case .reload: refresh(followFocus: false)
+        case .reload: reloadConfig()
         case .quit:
             restoreAll()
             exit(0)
@@ -329,7 +329,7 @@ final class WindowManager {
     private func resize(by delta: CGFloat) {
         let ids = tiled
         guard layouts[current] ?? .dwindle == .dwindle, let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
-        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: Config.gapsIn)
+        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner)
         layout()
     }
 
@@ -400,6 +400,29 @@ final class WindowManager {
         parked.removeAll()
     }
 
+    // MARK: Config
+
+    func bindHotkeys() {
+        Hotkeys.shared.reset()
+        for (mode, bindings) in config.modes {
+            for (binding, actions) in bindings {
+                Hotkeys.shared.bind(mode, binding) { [unowned self] in actions.forEach(execute) }
+            }
+        }
+        mode = "main"
+        Hotkeys.shared.activate(mode)
+    }
+
+    private func reloadConfig() {
+        guard var new = loadConfig() else { return }
+        // Workspace slots are allocated at startup, so a changed list waits for a restart.
+        new.workspaces = config.workspaces
+        config = new
+        bindHotkeys()
+        border.applyStyle()
+        refresh(followFocus: false)
+    }
+
     // MARK: Persistence
 
     private var stateURL: URL {
@@ -409,7 +432,7 @@ final class WindowManager {
     /// Written after every layout so a crash loses nothing; skipped when nothing changed.
     private func save() {
         guard pendingRestore == nil else { return }
-        let names = Config.workspaces
+        let names = config.workspaces
         var state = SavedState(current: names[current], workspaces: [:], layouts: [:], ratios: [:])
         for (i, ids) in workspaces.enumerated() where !ids.isEmpty {
             state.workspaces[names[i]] = ids.compactMap { id in
@@ -425,7 +448,7 @@ final class WindowManager {
     }
 
     private func restore(_ state: SavedState, from alive: [CGWindowID: Window]) {
-        let names = Config.workspaces
+        let names = config.workspaces
         let entries = names.flatMap { name in (state.workspaces[name] ?? []).map { (name, $0) } }
         let live = alive.keys.sorted().compactMap { alive[$0]?.key }
         for (i, id) in match(saved: entries.map(\.1.key), alive: live) {

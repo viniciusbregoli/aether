@@ -14,7 +14,7 @@ final class Animator: NSObject {
         let completion: (() -> Void)?
 
         func rect(at now: CFTimeInterval) -> CGRect {
-            lerp(from, to, easeOutCubic((now - start) / Config.animationDuration))
+            lerp(from, to, easeOutCubic((now - start) / config.animationDuration))
         }
     }
 
@@ -30,7 +30,7 @@ final class Animator: NSObject {
     func animate(_ window: Window, from: CGRect? = nil, to: CGRect, completion: (() -> Void)? = nil) {
         let now = CACurrentMediaTime()
         let inFlight = animations[window.id]?.rect(at: now)
-        guard let start = from ?? inFlight ?? window.frame, start != to else {
+        guard let start = from ?? inFlight ?? window.frame, start != to, config.animationDuration > 0 else {
             animations[window.id] = nil
             // Every relayout lands here for windows that didn't move; skip the AX writes for those.
             if from != nil || inFlight != nil || window.frame != to { window.setFrame(to) }
@@ -51,7 +51,7 @@ final class Animator: NSObject {
     @objc private func tick() {
         let now = CACurrentMediaTime()
         for (id, var a) in animations {
-            let t = (now - a.start) / Config.animationDuration
+            let t = (now - a.start) / config.animationDuration
             if t >= 1 {
                 animations[id] = nil
                 a.window.setFrame(a.to)
