@@ -23,3 +23,12 @@ import Testing
     source.removeAll()
     #expect(windowToFocus(in: source, remembered: remembered) == nil)
 }
+
+@Test func automaticBackAndForthOnlyTogglesTheRequestedCurrentWorkspace() {
+    #expect(workspaceToActivate(requested: 0, current: 0, previous: nil, autoBackAndForth: true) == 0)
+    #expect(workspaceToActivate(requested: 1, current: 0, previous: nil, autoBackAndForth: true) == 1)
+    #expect(workspaceToActivate(requested: 1, current: 1, previous: 0, autoBackAndForth: true) == 0)
+    #expect(workspaceToActivate(requested: 0, current: 0, previous: 1, autoBackAndForth: true) == 1)
+    #expect(workspaceToActivate(requested: 1, current: 1, previous: 0, autoBackAndForth: false) == 1)
+    #expect(workspaceToActivate(requested: 2, current: 1, previous: 0, autoBackAndForth: true) == 2)
+}

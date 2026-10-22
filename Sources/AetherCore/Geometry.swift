@@ -7,11 +7,11 @@ public enum Direction: CaseIterable, Sendable {
 /// Hyprland's dwindle layout: each window takes a share of the remaining area (`ratios[k]` of
 /// split k, default half), splitting along the longer side, and the rest recurses into the
 /// other part. Coordinates are top-left origin (Accessibility API space).
-public func dwindle(count: Int, in rect: CGRect, gap: CGFloat, ratios: [CGFloat] = []) -> [CGRect] {
+public func dwindle(count: Int, in rect: CGRect, gap: CGFloat, ratios: [CGFloat] = [], defaultRatio: CGFloat = 0.5) -> [CGRect] {
     guard count > 0 else { return [] }
     if count == 1 { return [rect] }
-    let (first, rest) = split(rect, gap: gap, ratio: ratios.first ?? 0.5)
-    return [first] + dwindle(count: count - 1, in: rest, gap: gap, ratios: Array(ratios.dropFirst()))
+    let (first, rest) = split(rect, gap: gap, ratio: ratios.first ?? defaultRatio)
+    return [first] + dwindle(count: count - 1, in: rest, gap: gap, ratios: Array(ratios.dropFirst()), defaultRatio: defaultRatio)
 }
 
 func split(_ r: CGRect, gap: CGFloat, ratio: CGFloat) -> (CGRect, CGRect) {
@@ -27,9 +27,9 @@ func split(_ r: CGRect, gap: CGFloat, ratio: CGFloat) -> (CGRect, CGRect) {
 
 /// Ratios after growing window `index` by `delta` points ("resize smart" in AeroSpace terms).
 /// Window k owns the first part of split k; the last window owns the second part of the last split.
-public func resized(_ ratios: [CGFloat], index: Int, delta: CGFloat, count: Int, in rect: CGRect, gap: CGFloat) -> [CGFloat] {
+public func resized(_ ratios: [CGFloat], index: Int, delta: CGFloat, count: Int, in rect: CGRect, gap: CGFloat, defaultRatio: CGFloat = 0.5) -> [CGFloat] {
     guard count > 1, index < count else { return ratios }
-    var ratios = ratios + Array(repeating: 0.5, count: max(0, count - 1 - ratios.count))
+    var ratios = ratios + Array(repeating: defaultRatio, count: max(0, count - 1 - ratios.count))
     let k = min(index, count - 2)
     let frames = dwindle(count: count, in: rect, gap: gap, ratios: ratios)
     let area = frames[k...].reduce(frames[k]) { $0.union($1) }
@@ -81,6 +81,21 @@ private func overlaps(_ a0: CGFloat, _ a1: CGFloat, _ b0: CGFloat, _ b1: CGFloat
 public func easeOutCubic(_ t: Double) -> Double {
     let p = 1 - min(max(t, 0), 1)
     return 1 - p * p * p
+}
+
+public enum AnimationCurve: String, Codable, CaseIterable, Sendable {
+    case linear
+    case easeOutCubic = "ease-out-cubic"
+    case easeInOutCubic = "ease-in-out-cubic"
+
+    public func value(at progress: Double) -> Double {
+        let t = min(max(progress, 0), 1)
+        switch self {
+        case .linear: return t
+        case .easeOutCubic: return AetherCore.easeOutCubic(t)
+        case .easeInOutCubic: return t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        }
+    }
 }
 
 public func lerp(_ a: CGRect, _ b: CGRect, _ t: Double) -> CGRect {

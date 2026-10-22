@@ -88,3 +88,52 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     // A recycled id from another app must not steal the slot.
     #expect(match(saved: [WindowKey(id: 9, bundleId: "a", title: "")], alive: [WindowKey(id: 9, bundleId: "b", title: "")]).isEmpty)
 }
+
+@Test func easingPresetsAreClampedMonotonicAndDistinct() {
+    for curve in AnimationCurve.allCases {
+        #expect(curve.value(at: -1) == 0)
+        #expect(curve.value(at: 0) == 0)
+        #expect(curve.value(at: 1) == 1)
+        #expect(curve.value(at: 2) == 1)
+        var previous = 0.0
+        for step in 0...100 {
+            let value = curve.value(at: Double(step) / 100)
+            #expect((0...1).contains(value))
+            #expect(value >= previous)
+            previous = value
+        }
+    }
+    #expect(AnimationCurve.linear.value(at: 0.25) == 0.25)
+    #expect(AnimationCurve.easeOutCubic.value(at: 0.25) == 0.578125)
+    #expect(AnimationCurve.easeInOutCubic.value(at: 0.25) == 0.0625)
+    #expect(AnimationCurve.easeInOutCubic.value(at: 0.75) == 0.9375)
+}
+
+@Test func configuredSplitRatioAppliesToEveryMissingSplit() {
+    for ratio: CGFloat in [0.1, 0.5, 0.9] {
+        for area in [screen, CGRect(x: 20, y: 30, width: 600, height: 1000)] {
+            let frames = dwindle(count: 3, in: area, gap: 10, defaultRatio: ratio)
+            let (first, rest) = split(area, gap: 10, ratio: ratio)
+            let (second, third) = split(rest, gap: 10, ratio: ratio)
+            #expect(frames == [first, second, third])
+            for (i, frame) in frames.enumerated() {
+                #expect(area.contains(frame))
+                for other in frames[(i + 1)...] { #expect(!frame.intersects(other)) }
+            }
+        }
+    }
+    let frames = dwindle(count: 3, in: screen, gap: 0, ratios: [0.4], defaultRatio: 0.7)
+    #expect(frames[0].width == 400)
+    #expect(frames[1].width == 420)
+    #expect(frames[1].height == 600)
+    #expect(frames[2].width == 180)
+}
+
+@Test func resizingStartsFromConfiguredRatioAndPreservesOverrides() {
+    let initial = dwindle(count: 2, in: screen, gap: 10, defaultRatio: 0.7)
+    let ratios = resized([], index: 0, delta: 50, count: 2, in: screen, gap: 10, defaultRatio: 0.7)
+    let frames = dwindle(count: 2, in: screen, gap: 10, ratios: ratios, defaultRatio: 0.7)
+    #expect(abs(frames[0].width - initial[0].width - 50) < 0.001)
+    #expect(resized([0.4], index: 2, delta: 0, count: 3, in: screen, gap: 10, defaultRatio: 0.7) == [0.4, 0.7])
+    #expect(resized([], index: 0, delta: 5000, count: 2, in: screen, gap: 10, defaultRatio: 0.7) == [0.9])
+}

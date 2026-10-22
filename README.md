@@ -68,7 +68,7 @@ aether reads `~/.config/aether/config.toml` and writes the defaults there on fir
 ```toml
 gaps-inner = 10
 gaps-outer = 10
-animation-duration = 0.22          # 0 turns animations off
+animation-duration = 0.22          # 0 makes window movement immediate
 border-width = 3
 border-colors = ['#64d2ff', '#bf5af2', '#64d2ff']
 floating-apps = ['com.apple.finder']
@@ -81,6 +81,22 @@ reuse-window-apps = ['app.zen-browser.zen']
     alt-minus = 'resize smart -50'
     alt-enter = 'exec-and-forget open -n -a Ghostty'
 ```
+
+Appearance and workspace controls retain the existing defaults:
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `animations-enabled` | `true` | Enable window movement animations and border rotation. |
+| `animation-curve` | `'ease-out-cubic'` | Also accepts `'linear'` and `'ease-in-out-cubic'`. |
+| `border-enabled` | `true` | Show the focused-window outline. Width zero also hides it. |
+| `border-animation-enabled` | `true` | Rotate the gradient; false keeps it static. |
+| `default-layout` | `'dwindle'` | Also accepts `'accordion'`. Manual and saved workspace layouts take precedence; reset-layout returns to this default. |
+| `dwindle-split-ratio` | `0.5` | First/top/left child's fraction, from `0.1` to `0.9`. Saved and manually resized splits take precedence. |
+| `workspace-auto-back-and-forth` | `false` | Selecting the current workspace returns to the previous one. Focus-driven switches are unaffected. |
+
+`animation-duration = 0` makes window movement immediate. `animations-enabled = false` also stops border rotation. In-flight animations keep their original timing and curve; disabling motion during reload finishes their moves, including parking outgoing windows. `border-colors` accepts a single color for a solid outline; `border-radius` rounds only the overlay, not the app's window. Duration, width and radius must be finite and nonnegative, rotation seconds must be finite and positive, and the color list must not be empty.
+
+These controls take ideas from [Hyprland's configuration](https://wiki.hypr.land/0.56.0/Configuring/), while retaining aether's TOML syntax and defaults. The [configuration reference](docs/hyprland-config-reference.md) maps every documented option family and lists the features that need more macOS work. The [visual references](docs/hyprland-inspiration.md) link to the researched dotfiles setups.
 
 Commands: `workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
 
