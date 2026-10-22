@@ -53,9 +53,14 @@ final class WindowManager {
             scheduleRefresh(followFocus: true)
         }
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
+                     NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification,
+                     NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification,
+                     NSWorkspace.sessionDidBecomeActiveNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
         }
+        // Unlocking does not always wake the display or switch the user session.
+        DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("com.apple.screenIsUnlocked"),
+                                                            object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
         // AeroSpace's backstop: destroy notifications are unreliable, and a mouse-up after the user
         // drags a tiled window should snap it back into place.
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in scheduleRefresh() }
@@ -239,8 +244,14 @@ final class WindowManager {
 
         let corner = CGPoint(x: screen.maxX - 1, y: screen.maxY - 1)
         for (i, ws) in workspaces.enumerated() where i != current {
-            for id in ws where !parked.contains(id) {
+            for id in ws {
                 guard let window = windows[id] else { continue }
+                if parked.contains(id) {
+                    if needsParking(origin: window.frame?.origin, corner: corner, isAnimating: animator.isAnimating(id)) {
+                        window.setPosition(corner)
+                    }
+                    continue
+                }
                 if floating.contains(id) { floatingFrames[id] = window.frame }
                 parked.insert(id)
                 if slide != 0, let frame = window.frame {
