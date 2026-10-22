@@ -130,7 +130,8 @@ final class WindowManager {
         activatedPid = nil
         if followFocus, let focused, let ws = workspace(of: focused), ws != current {
             let pid = windows[focused]?.pid
-            if let pid, pid == activated, !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
+            if let pid, pid == activated, !Config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
+               !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
                 // for a new window here. Apps that ignore cmd-N fall back to jumping to their window.
                 requestNewWindow(pid)
