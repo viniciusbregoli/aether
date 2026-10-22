@@ -20,6 +20,12 @@ final class Hotkeys {
         }, 1, &spec, nil, nil)
     }
 
+    /// Drops every binding, for a config reload.
+    func reset() {
+        activate("")
+        modes.removeAll()
+    }
+
     func bind(_ mode: String, _ binding: String, _ action: @escaping () -> Void) {
         modes[mode, default: [:]][binding] = action
     }

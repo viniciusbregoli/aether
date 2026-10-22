@@ -22,14 +22,19 @@ final class Border {
         window.contentView = view
 
         gradient.type = .conic
-        gradient.colors = Config.borderColors.map(\.cgColor)
         gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
         shape.fillColor = nil
         shape.strokeColor = NSColor.black.cgColor
-        shape.lineWidth = Config.borderWidth
         gradient.mask = shape
         view.layer?.addSublayer(gradient)
+        applyStyle()
+    }
+
+    /// Picks up border colors, width and rotation speed from the config (also after a reload).
+    func applyStyle() {
+        gradient.colors = config.borderColors.map { CGColor(red: $0[0], green: $0[1], blue: $0[2], alpha: $0[3]) }
+        shape.lineWidth = config.borderWidth
 
         // Rotating the conic gradient's angle gives the animated Hyprland border; Core Animation
         // runs it in the render server, so it costs us nothing per frame.
@@ -37,7 +42,7 @@ final class Border {
         spin.values = stride(from: 0.0, through: 2 * .pi, by: .pi / 16).map {
             NSValue(point: CGPoint(x: 0.5 + 0.5 * sin($0), y: 0.5 + 0.5 * cos($0)))
         }
-        spin.duration = Config.borderRotationSeconds
+        spin.duration = config.borderRotationSeconds
         spin.repeatCount = .infinity
         gradient.add(spin, forKey: "spin")
     }
@@ -46,7 +51,7 @@ final class Border {
     /// window but is clamped to the screen, so on windows touching the screen edges it is drawn
     /// just inside them instead of vanishing off-screen.
     func show(around frame: CGRect, within screen: CGRect) {
-        let w = Config.borderWidth
+        let w = config.borderWidth
         let rect = frame.insetBy(dx: -w, dy: -w).intersection(screen)
         guard !rect.isNull else { return hide() }
         window.setFrame(flip(rect), display: false)
@@ -55,7 +60,7 @@ final class Border {
         CATransaction.setDisableActions(true)
         gradient.frame = bounds
         shape.frame = bounds
-        let radius = Config.borderRadius + w / 2
+        let radius = config.borderRadius + w / 2
         shape.path = CGPath(roundedRect: bounds.insetBy(dx: w / 2, dy: w / 2), cornerWidth: radius, cornerHeight: radius, transform: nil)
         CATransaction.commit()
         if !window.isVisible { window.orderFrontRegardless() }

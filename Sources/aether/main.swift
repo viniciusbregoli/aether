@@ -10,12 +10,7 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 let wm = WindowManager.shared
-for (mode, bindings) in Config.modes {
-    for (binding, actions) in bindings {
-        Hotkeys.shared.bind(mode, binding) { actions.forEach(wm.execute) }
-    }
-}
-Hotkeys.shared.activate("main")
+wm.bindHotkeys()
 
 // Ctrl-C or kill must not leave windows stranded in the corner.
 var signalSources: [DispatchSourceSignal] = []
@@ -28,5 +23,5 @@ for sig in [SIGINT, SIGTERM] {
 }
 
 wm.start()
-print("aether running with the bindings ported from ~/.aerospace.toml. alt-shift-semicolon then q quits.")
+print("aether running with \(configURL.path). alt-shift-semicolon then q quits.")
 app.run()
