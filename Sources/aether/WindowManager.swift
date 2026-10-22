@@ -216,14 +216,16 @@ final class WindowManager {
 
     private var tiledFrames: [CGRect] {
         let ids = tiled
-        switch layouts[current] ?? .dwindle {
+        switch currentLayout {
         case .dwindle:
-            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner, ratios: ratios[current] ?? [])
+            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner, ratios: ratios[current] ?? [], defaultRatio: config.dwindleSplitRatio)
         case .accordion:
             let focused = lastFocus[current].flatMap(ids.firstIndex(of:)) ?? 0
             return accordion(count: ids.count, focused: focused, in: workArea, padding: config.accordionPadding)
         }
     }
+
+    private var currentLayout: Layout { layouts[current] ?? config.defaultLayout }
 
     /// `slide` is -1/+1 when switching workspaces: incoming windows slide in from that side and
     /// outgoing ones leave through the other, Hyprland style, using only position writes.
@@ -280,7 +282,11 @@ final class WindowManager {
 
     func execute(_ action: Action) {
         switch action {
-        case .workspace(let name): config.workspaces.firstIndex(of: name).map { switchTo($0) }
+        case .workspace(let name):
+            if let ws = config.workspaces.firstIndex(of: name) {
+                switchTo(workspaceToActivate(requested: ws, current: current, previous: previous,
+                                             autoBackAndForth: config.workspaceAutoBackAndForth))
+            }
         case .moveToWorkspace(let name): config.workspaces.firstIndex(of: name).map(moveFocused(to:))
         case .move(let direction): swap(direction)
         case .resize(let delta): resize(by: delta)
@@ -313,7 +319,7 @@ final class WindowManager {
         let ids = tiled
         guard let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
         let next: Int?
-        if layouts[current] == .accordion {
+        if currentLayout == .accordion {
             // Accordion frames overlap, so geometry can't find a neighbour; use list order.
             let step = direction == .left || direction == .up ? -1 : 1
             next = ids.indices.contains(index + step) ? index + step : nil
@@ -328,8 +334,8 @@ final class WindowManager {
 
     private func resize(by delta: CGFloat) {
         let ids = tiled
-        guard layouts[current] ?? .dwindle == .dwindle, let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
-        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner)
+        guard currentLayout == .dwindle, let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
+        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner, defaultRatio: config.dwindleSplitRatio)
         layout()
     }
 
@@ -418,6 +424,7 @@ final class WindowManager {
         // Workspace slots are allocated at startup, so a changed list waits for a restart.
         new.workspaces = config.workspaces
         config = new
+        if !config.animationsEnabled || config.animationDuration == 0 { animator.finishAll() }
         bindHotkeys()
         border.applyStyle()
         refresh(followFocus: false)

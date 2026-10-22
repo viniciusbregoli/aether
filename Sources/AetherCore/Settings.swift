@@ -74,7 +74,14 @@ public struct Settings: Equatable, Sendable {
     public var gapsInner: CGFloat
     public var gapsOuter: CGFloat
     public var accordionPadding: CGFloat
+    public var defaultLayout: Layout
+    public var dwindleSplitRatio: CGFloat
+    public var workspaceAutoBackAndForth: Bool
+    public var animationsEnabled: Bool
     public var animationDuration: Double
+    public var animationCurve: AnimationCurve
+    public var borderEnabled: Bool
+    public var borderAnimationEnabled: Bool
     public var borderWidth: CGFloat
     public var borderRadius: CGFloat
     public var borderColors: [[CGFloat]]
@@ -119,16 +126,35 @@ public struct Settings: Equatable, Sendable {
         guard !workspaces.isEmpty else { throw ConfigError(description: "workspaces must not be empty") }
         guard Set(workspaces).count == workspaces.count else { throw ConfigError(description: "workspaces must be unique") }
 
+        let duration = user.animationDuration ?? base.animationDuration!
+        let width = user.borderWidth ?? base.borderWidth!
+        let radius = user.borderRadius ?? base.borderRadius!
+        let rotation = user.borderRotationSeconds ?? base.borderRotationSeconds!
+        let ratio = user.dwindleSplitRatio ?? base.dwindleSplitRatio!
+        for (key, value) in [("animation-duration", duration), ("border-width", width), ("border-radius", radius)] {
+            guard value.isFinite, value >= 0 else { throw ConfigError(description: "\(key) must be finite and nonnegative") }
+        }
+        guard rotation.isFinite, rotation > 0 else { throw ConfigError(description: "border-rotation-seconds must be finite and positive") }
+        guard ratio.isFinite, (0.1...0.9).contains(ratio) else { throw ConfigError(description: "dwindle-split-ratio must be between 0.1 and 0.9") }
+        guard !parsedColors.isEmpty else { throw ConfigError(description: "border-colors must not be empty") }
+
         return Settings(
             workspaces: workspaces,
             gapsInner: CGFloat(user.gapsInner ?? base.gapsInner!),
             gapsOuter: CGFloat(user.gapsOuter ?? base.gapsOuter!),
             accordionPadding: CGFloat(user.accordionPadding ?? base.accordionPadding!),
-            animationDuration: user.animationDuration ?? base.animationDuration!,
-            borderWidth: CGFloat(user.borderWidth ?? base.borderWidth!),
-            borderRadius: CGFloat(user.borderRadius ?? base.borderRadius!),
+            defaultLayout: user.defaultLayout ?? base.defaultLayout!,
+            dwindleSplitRatio: CGFloat(ratio),
+            workspaceAutoBackAndForth: user.workspaceAutoBackAndForth ?? base.workspaceAutoBackAndForth!,
+            animationsEnabled: user.animationsEnabled ?? base.animationsEnabled!,
+            animationDuration: duration,
+            animationCurve: user.animationCurve ?? base.animationCurve!,
+            borderEnabled: user.borderEnabled ?? base.borderEnabled!,
+            borderAnimationEnabled: user.borderAnimationEnabled ?? base.borderAnimationEnabled!,
+            borderWidth: CGFloat(width),
+            borderRadius: CGFloat(radius),
             borderColors: parsedColors,
-            borderRotationSeconds: user.borderRotationSeconds ?? base.borderRotationSeconds!,
+            borderRotationSeconds: rotation,
             floatingApps: Set(user.floatingApps ?? base.floatingApps!),
             reuseWindowApps: Set(user.reuseWindowApps ?? base.reuseWindowApps!),
             modes: modes)
@@ -140,7 +166,14 @@ private struct RawConfig: Decodable {
     var gapsInner: Double?
     var gapsOuter: Double?
     var accordionPadding: Double?
+    var defaultLayout: Layout?
+    var dwindleSplitRatio: Double?
+    var workspaceAutoBackAndForth: Bool?
+    var animationsEnabled: Bool?
     var animationDuration: Double?
+    var animationCurve: AnimationCurve?
+    var borderEnabled: Bool?
+    var borderAnimationEnabled: Bool?
     var borderWidth: Double?
     var borderRadius: Double?
     var borderColors: [String]?
@@ -152,7 +185,10 @@ private struct RawConfig: Decodable {
     enum CodingKeys: String, CodingKey {
         case workspaces, mode
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
-        case animationDuration = "animation-duration"
+        case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
+        case workspaceAutoBackAndForth = "workspace-auto-back-and-forth"
+        case animationsEnabled = "animations-enabled", animationDuration = "animation-duration", animationCurve = "animation-curve"
+        case borderEnabled = "border-enabled", borderAnimationEnabled = "border-animation-enabled"
         case borderWidth = "border-width", borderRadius = "border-radius", borderColors = "border-colors"
         case borderRotationSeconds = "border-rotation-seconds"
         case floatingApps = "floating-apps", reuseWindowApps = "reuse-window-apps"

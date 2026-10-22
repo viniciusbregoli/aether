@@ -33,8 +33,12 @@ final class Border {
 
     /// Picks up border colors, width and rotation speed from the config (also after a reload).
     func applyStyle() {
-        gradient.colors = config.borderColors.map { CGColor(red: $0[0], green: $0[1], blue: $0[2], alpha: $0[3]) }
+        let colors = config.borderColors.map { CGColor(red: $0[0], green: $0[1], blue: $0[2], alpha: $0[3]) }
+        gradient.colors = colors.count == 1 ? [colors[0], colors[0]] : colors
         shape.lineWidth = config.borderWidth
+        gradient.removeAnimation(forKey: "spin")
+        if !config.borderEnabled || config.borderWidth == 0 { hide() }
+        guard config.animationsEnabled, config.borderAnimationEnabled, config.borderEnabled, config.borderWidth > 0 else { return }
 
         // Rotating the conic gradient's angle gives the animated Hyprland border; Core Animation
         // runs it in the render server, so it costs us nothing per frame.
@@ -51,6 +55,7 @@ final class Border {
     /// window but is clamped to the screen, so on windows touching the screen edges it is drawn
     /// just inside them instead of vanishing off-screen.
     func show(around frame: CGRect, within screen: CGRect) {
+        guard config.borderEnabled, config.borderWidth > 0 else { return hide() }
         let w = config.borderWidth
         let rect = frame.insetBy(dx: -w, dy: -w).intersection(screen)
         guard !rect.isNull else { return hide() }

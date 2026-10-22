@@ -12,14 +12,25 @@ workspaces = ['1', '2', '3', '4', '5', '6', '7', '8', '9',
 gaps-inner = 10
 gaps-outer = 10
 accordion-padding = 30
+# Manual and saved workspace layouts override this default.
+default-layout = 'dwindle' # dwindle or accordion
+# First child's fraction; manual and saved split ratios take precedence.
+dwindle-split-ratio = 0.5 # 0.1 to 0.9
+# Selecting the current workspace returns to the previous one when enabled.
+workspace-auto-back-and-forth = false
 
-# Seconds; 0 turns animations off.
+# Movement duration in seconds; 0 places windows immediately.
+animations-enabled = true # Includes border rotation.
 animation-duration = 0.22
+animation-curve = 'ease-out-cubic' # linear, ease-out-cubic, ease-in-out-cubic
 
+border-enabled = true
 border-width = 3
+# Rounds the overlay outline, not the application's window.
 border-radius = 12
 # Conic gradient around the focused window, #rrggbb or #rrggbbaa.
 border-colors = ['#64d2ff', '#bf5af2', '#64d2ff']
+border-animation-enabled = true # false leaves the gradient static.
 border-rotation-seconds = 6
 
 # Bundle ids of apps whose windows float instead of tiling.
