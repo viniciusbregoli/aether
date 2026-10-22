@@ -11,6 +11,7 @@ A tiling window manager for macOS with AeroSpace's model and Hyprland's look, bu
 - Animated layout changes and a sliding workspace switch
 - Rotating gradient border around the focused window
 - Current workspace shown in the menu bar
+- Remembers which window was on which workspace across restarts
 
 ## Run
 

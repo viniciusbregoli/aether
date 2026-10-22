@@ -25,6 +25,8 @@ final class WindowManager {
     private var refreshScheduled = false
     private var followFocusOnRefresh = false
     private var mode = "main"
+    private var pendingRestore: SavedState?
+    private var lastSaved: Data?
     private let animator = Animator()
     private let border = Border()
     private let tray = Tray()
@@ -52,6 +54,7 @@ final class WindowManager {
         // AeroSpace's backstop: destroy notifications are unreliable, and a mouse-up after the user
         // drags a tiled window should snap it back into place.
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in scheduleRefresh() }
+        pendingRestore = try? JSONDecoder().decode(SavedState.self, from: Data(contentsOf: stateURL))
         refresh(followFocus: false)
     }
 
@@ -92,7 +95,7 @@ final class WindowManager {
             observe(pid, axApp)
             for element in (axApp.get(kAXWindowsAttribute) as [AXUIElement]?) ?? [] {
                 guard let id = element.windowId, isManageable(element) else { continue }
-                alive[id] = windows[id] ?? register(Window(id: id, pid: pid, ax: element))
+                alive[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
             }
         }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
@@ -104,15 +107,19 @@ final class WindowManager {
         fullscreen.subtract(gone)
         for id in gone { animator.cancel(id) }
 
+        if let saved = pendingRestore {
+            pendingRestore = nil
+            restore(saved, from: alive)
+        }
+
         let focused = focusedId
-        for id in alive.keys.sorted() where windows[id] == nil {
+        for id in alive.keys.sorted() where windows[id] == nil && workspace(of: id) == nil {
             // Like Hyprland's dwindle, a new window goes right after the focused one.
             let ws = workspaces[current]
             let index = focused.flatMap(ws.firstIndex(of:)).map { $0 + 1 } ?? ws.count
             workspaces[current].insert(id, at: index)
             let window = alive[id]!
-            let bundleId = NSRunningApplication(processIdentifier: window.pid)?.bundleIdentifier ?? ""
-            if Config.floatingApps.contains(bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
+            if Config.floatingApps.contains(window.bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
         }
         windows = alive
 
@@ -216,6 +223,7 @@ final class WindowManager {
         }
         updateBorder()
         updateTray()
+        save()
     }
 
     private func updateTray() {
@@ -363,4 +371,62 @@ final class WindowManager {
         }
         parked.removeAll()
     }
+
+    // MARK: Persistence
+
+    private var stateURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/aether/state.json")
+    }
+
+    /// Written after every layout so a crash loses nothing; skipped when nothing changed.
+    private func save() {
+        guard pendingRestore == nil else { return }
+        let names = Config.workspaces
+        var state = SavedState(current: names[current], workspaces: [:], layouts: [:], ratios: [:])
+        for (i, ids) in workspaces.enumerated() where !ids.isEmpty {
+            state.workspaces[names[i]] = ids.compactMap { id in
+                windows[id].map { SavedWindow(key: $0.key, floating: floating.contains(id), fullscreen: fullscreen.contains(id)) }
+            }
+        }
+        for (i, layout) in layouts { state.layouts[names[i]] = layout }
+        for (i, r) in ratios { state.ratios[names[i]] = r }
+        guard let data = try? JSONEncoder().encode(state), data != lastSaved else { return }
+        lastSaved = data
+        try? FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: stateURL, options: .atomic)
+    }
+
+    private func restore(_ state: SavedState, from alive: [CGWindowID: Window]) {
+        let names = Config.workspaces
+        let entries = names.flatMap { name in (state.workspaces[name] ?? []).map { (name, $0) } }
+        let live = alive.keys.sorted().compactMap { alive[$0]?.key }
+        for (i, id) in match(saved: entries.map(\.1.key), alive: live) {
+            let (name, saved) = entries[i]
+            guard let ws = names.firstIndex(of: name) else { continue }
+            workspaces[ws].append(id)
+            if saved.floating { floating.insert(id) }
+            if saved.fullscreen { fullscreen.insert(id) }
+        }
+        // match() returns a dictionary, so restore each workspace's saved order.
+        for ws in workspaces.indices {
+            let order = (state.workspaces[names[ws]] ?? []).map(\.key.id)
+            workspaces[ws].sort { (order.firstIndex(of: $0) ?? .max, $0) < (order.firstIndex(of: $1) ?? .max, $1) }
+        }
+        for (name, layout) in state.layouts { names.firstIndex(of: name).map { layouts[$0] = layout } }
+        for (name, r) in state.ratios { names.firstIndex(of: name).map { ratios[$0] = r } }
+        current = names.firstIndex(of: state.current) ?? 0
+    }
+}
+
+private struct SavedState: Codable {
+    var current: String
+    var workspaces: [String: [SavedWindow]]
+    var layouts: [String: Layout]
+    var ratios: [String: [CGFloat]]
+}
+
+private struct SavedWindow: Codable {
+    let key: WindowKey
+    let floating: Bool
+    let fullscreen: Bool
 }
