@@ -1,3 +1,4 @@
+import AetherCore
 import AppKit
 import ApplicationServices
 
@@ -27,12 +28,18 @@ extension AXUIElement {
 final class Window {
     let id: CGWindowID
     let pid: pid_t
+    let bundleId: String
     let ax: AXUIElement
 
-    init(id: CGWindowID, pid: pid_t, ax: AXUIElement) {
+    init(id: CGWindowID, pid: pid_t, bundleId: String, ax: AXUIElement) {
         self.id = id
         self.pid = pid
+        self.bundleId = bundleId
         self.ax = ax
+    }
+
+    var key: WindowKey {
+        WindowKey(id: id, bundleId: bundleId, title: ax.get(kAXTitleAttribute) ?? "")
     }
 
     var frame: CGRect? {

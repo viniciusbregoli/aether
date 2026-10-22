@@ -1,7 +1,7 @@
 import AetherCore
 import AppKit
 
-enum Layout { case dwindle, accordion }
+enum Layout: String, Codable { case dwindle, accordion }
 
 enum Action {
     case workspace(String)
