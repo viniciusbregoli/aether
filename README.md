@@ -10,6 +10,7 @@ A tiling window manager for macOS with AeroSpace's model and Hyprland's look, bu
 - Workspaces 1-9 and A-Z kept in memory; hidden windows are parked in the screen corner, like AeroSpace
 - Animated layout changes and a sliding workspace switch
 - Rotating gradient border around the focused window
+- Current workspace shown in the menu bar
 
 ## Run
 

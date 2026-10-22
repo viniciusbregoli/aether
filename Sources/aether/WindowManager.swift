@@ -24,8 +24,10 @@ final class WindowManager {
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
     private var followFocusOnRefresh = false
+    private var mode = "main"
     private let animator = Animator()
     private let border = Border()
+    private let tray = Tray()
     /// Cached so per-frame border updates don't cost AX round trips.
     private var borderTarget: CGWindowID?
 
@@ -213,6 +215,13 @@ final class WindowManager {
             }
         }
         updateBorder()
+        updateTray()
+    }
+
+    private func updateTray() {
+        let occupied = Config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { Config.workspaces[$0] }
+        tray.update(current: Config.workspaces[current], occupied: occupied, mode: mode,
+                    switchTo: { [unowned self] in execute(.workspace($0)) }, quit: { [unowned self] in execute(.quit) })
     }
 
     private func place(_ id: CGWindowID, _ frame: CGRect, _ dx: CGFloat) {
@@ -245,7 +254,10 @@ final class WindowManager {
         case .fullscreen: toggleFullscreen()
         case .backAndForth: previous.map { switchTo($0) }
         case .exec(let command): _ = try? Process.run(URL(fileURLWithPath: "/bin/bash"), arguments: ["-c", command])
-        case .mode(let mode): Hotkeys.shared.activate(mode)
+        case .mode(let mode):
+            self.mode = mode
+            Hotkeys.shared.activate(mode)
+            updateTray()
         case .toggleFloating: toggleFloating()
         case .resetLayout:
             layouts[current] = nil
