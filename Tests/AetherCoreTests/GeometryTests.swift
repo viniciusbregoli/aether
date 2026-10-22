@@ -137,3 +137,15 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(resized([0.4], index: 2, delta: 0, count: 3, in: screen, gap: 10, defaultRatio: 0.7) == [0.4, 0.7])
     #expect(resized([], index: 0, delta: 5000, count: 2, in: screen, gap: 10, defaultRatio: 0.7) == [0.9])
 }
+
+@Test func parkedWindowsAreRepairedAfterTheirPositionChanges() {
+    let corner = CGPoint(x: 999, y: 599)
+    #expect(needsParking(origin: CGPoint(x: 40, y: 40), corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: CGPoint(x: 999, y: 300), corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: CGPoint(x: 300, y: 599), corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: CGPoint(x: 1000, y: 400), corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: corner, corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: CGPoint(x: 998.5, y: 599.5), corner: corner, isAnimating: false))
+    #expect(!needsParking(origin: CGPoint(x: 40, y: 40), corner: corner, isAnimating: true))
+    #expect(!needsParking(origin: nil, corner: corner, isAnimating: false))
+}
