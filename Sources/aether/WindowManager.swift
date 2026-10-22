@@ -24,6 +24,8 @@ final class WindowManager {
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
     private var followFocusOnRefresh = false
+    /// App activated through Dock, Spotlight or Cmd-Tab since the last refresh.
+    private var activatedPid: pid_t?
     private var mode = "main"
     private var pendingRestore: SavedState?
     private var lastSaved: Data?
@@ -44,7 +46,8 @@ final class WindowManager {
     func start() {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [unowned self] _ in
+        center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [unowned self] note in
+            activatedPid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
             scheduleRefresh(followFocus: true)
         }
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
@@ -123,10 +126,24 @@ final class WindowManager {
         }
         windows = alive
 
-        // Cmd-Tab or a click on a window that lives on another workspace switches to it.
+        let activated = activatedPid
+        activatedPid = nil
         if followFocus, let focused, let ws = workspace(of: focused), ws != current {
-            switchTo(ws, focusing: focused)
-            return
+            let pid = windows[focused]?.pid
+            if let pid, pid == activated, !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
+                // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
+                // for a new window here. Apps that ignore cmd-N fall back to jumping to their window.
+                requestNewWindow(pid)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+                    if !workspaces[current].contains(where: { windows[$0]?.pid == pid }), let ws = workspace(of: focused) {
+                        switchTo(ws, focusing: focused)
+                    }
+                }
+            } else {
+                // Focus moved to a window on another workspace by other means (a link, a notification).
+                switchTo(ws, focusing: focused)
+                return
+            }
         }
         if let focused, workspace(of: focused) == current { lastFocus[current] = focused }
         layout()
