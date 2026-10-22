@@ -1,6 +1,6 @@
 import CoreGraphics
 
-public enum Direction: CaseIterable {
+public enum Direction: CaseIterable, Sendable {
     case left, right, up, down
 }
 
