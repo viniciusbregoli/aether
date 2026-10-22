@@ -28,6 +28,9 @@ enum Config {
     static let gapsOut: CGFloat = 10
     static let accordionPadding: CGFloat = 30
     static let floatingApps: Set<String> = ["com.apple.finder", "com.apple.QuickTimePlayerX", "com.TablePro"]
+    /// Apps that jump to their existing window when opened from another workspace, instead of
+    /// getting a new window on the current one.
+    static let reuseWindowApps: Set<String> = ["app.zen-browser.zen"]
 
     static let animationDuration = 0.22
     static let borderWidth: CGFloat = 3
