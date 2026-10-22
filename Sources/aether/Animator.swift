@@ -29,9 +29,11 @@ final class Animator: NSObject {
     /// A new animation on the same window replaces the old one and drops its completion.
     func animate(_ window: Window, from: CGRect? = nil, to: CGRect, completion: (() -> Void)? = nil) {
         let now = CACurrentMediaTime()
-        guard let start = from ?? animations[window.id]?.rect(at: now) ?? window.frame, start != to else {
+        let inFlight = animations[window.id]?.rect(at: now)
+        guard let start = from ?? inFlight ?? window.frame, start != to else {
             animations[window.id] = nil
-            window.setFrame(to)
+            // Every relayout lands here for windows that didn't move; skip the AX writes for those.
+            if from != nil || inFlight != nil || window.frame != to { window.setFrame(to) }
             onFrame?(window.id, to)
             completion?()
             return
