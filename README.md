@@ -26,7 +26,7 @@ The first run asks for Accessibility access for the app that launches it (your t
 
 ## Keys
 
-Ported from `~/.aerospace.toml`, except the workspace-to-monitor assignment (aether is single-monitor for now).
+The defaults, ported from my `~/.aerospace.toml` minus the workspace-to-monitor assignment (aether is single-monitor for now).
 
 | Keys | Action |
 |---|---|
@@ -41,4 +41,8 @@ Ported from `~/.aerospace.toml`, except the workspace-to-monitor assignment (aet
 | `alt-q` | send cmd-q to the focused app |
 | `alt-shift-semicolon` | service mode: `esc` reload, `r` reset layout, `f` toggle floating, `backspace` close other windows, `q` quit aether |
 
-Finder, QuickTime and TablePro windows float (Ghostty tiles, unlike the AeroSpace config). Settings live in `Sources/aether/Config.swift`.
+## Config
+
+aether reads `~/.config/aether/config.toml` and writes the defaults there on first run. Commands use AeroSpace's names (`workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `exec-and-forget`, `mode`, ...), so bindings can be copied from `~/.aerospace.toml`. Keys you leave out fall back to the defaults, and a `[mode.<name>.binding]` table replaces that mode's default bindings. Reload with `alt-shift-semicolon` then `esc`; changing the workspace list needs a restart.
+
+By default Finder, QuickTime and TablePro float, and Zen jumps to its existing window instead of opening a new one.
