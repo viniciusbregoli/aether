@@ -98,6 +98,7 @@ public struct Settings: Equatable, Sendable {
     public var masterRatio: CGFloat
     public var scrollingColumnWidth: CGFloat
     public var workspaceAutoBackAndForth: Bool
+    public var focusFollowsMouse: Bool
     public var animationsEnabled: Bool
     public var animationDuration: Double
     public var animationCurve: AnimationCurve
@@ -206,6 +207,7 @@ public struct Settings: Equatable, Sendable {
             masterRatio: CGFloat(masterRatio),
             scrollingColumnWidth: CGFloat(columnWidth),
             workspaceAutoBackAndForth: user.workspaceAutoBackAndForth ?? base.workspaceAutoBackAndForth!,
+            focusFollowsMouse: user.focusFollowsMouse ?? base.focusFollowsMouse!,
             animationsEnabled: user.animationsEnabled ?? base.animationsEnabled!,
             animationDuration: duration,
             animationCurve: user.animationCurve ?? base.animationCurve!,
@@ -237,6 +239,7 @@ private struct RawConfig: Decodable {
     var masterRatio: Double?
     var scrollingColumnWidth: Double?
     var workspaceAutoBackAndForth: Bool?
+    var focusFollowsMouse: Bool?
     var animationsEnabled: Bool?
     var animationDuration: Double?
     var animationCurve: AnimationCurve?
@@ -263,6 +266,7 @@ private struct RawConfig: Decodable {
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
         case masterRatio = "master-ratio", scrollingColumnWidth = "scrolling-column-width"
         case workspaceAutoBackAndForth = "workspace-auto-back-and-forth"
+        case focusFollowsMouse = "focus-follows-mouse"
         case animationsEnabled = "animations-enabled", animationDuration = "animation-duration", animationCurve = "animation-curve"
         case borderEnabled = "border-enabled", borderAnimationEnabled = "border-animation-enabled"
         case borderWidth = "border-width", borderRadius = "border-radius", borderColors = "border-colors"
