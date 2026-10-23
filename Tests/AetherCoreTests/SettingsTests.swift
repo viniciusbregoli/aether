@@ -88,6 +88,51 @@ import Testing
     #expect(throws: ConfigError.self) { try Settings.parse(toml) }
 }
 
+@Test func parsesWorkspaceOverrides() throws {
+    let settings = try Settings.parse("""
+    [workspace.3]
+        gaps-inner = 0
+        gaps-outer = 2
+        default-layout = 'accordion'
+
+    [workspace.A]
+        gaps-inner = 4
+    """)
+    #expect(settings.workspaceOverrides == [
+        "3": WorkspaceOverride(gapsInner: 0, gapsOuter: 2, defaultLayout: .accordion),
+        "A": WorkspaceOverride(gapsInner: 4),
+    ])
+    #expect(try Settings.parse(defaultConfig).workspaceOverrides.isEmpty)
+}
+
+@Test func effectiveValuesFallBackToGlobalKeys() throws {
+    let settings = try Settings.parse("""
+    gaps-inner = 8
+    gaps-outer = 6
+    [workspace.3]
+        gaps-inner = 0
+        default-layout = 'accordion'
+    """)
+    #expect(settings.gapsInner(in: "3") == 0)
+    #expect(settings.gapsOuter(in: "3") == 6)
+    #expect(settings.defaultLayout(in: "3") == .accordion)
+    #expect(settings.gapsInner(in: "4") == 8)
+    #expect(settings.gapsOuter(in: "4") == 6)
+    #expect(settings.defaultLayout(in: "4") == .dwindle)
+    #expect(settings.gapsInner(in: "missing") == 8)
+}
+
+@Test(arguments: [
+    "[workspace.nowhere]\ngaps-inner = 1",
+    "[workspace.3]\ngaps-inner = -1",
+    "[workspace.3]\ngaps-outer = inf",
+    "[workspace.3]\ngaps-outer = nan",
+    "[workspace.3]\ndefault-layout = 'master'",
+    "workspaces = ['a']\n[workspace.3]\ngaps-inner = 1",
+]) func invalidWorkspaceOverridesAreReported(_ toml: String) {
+    #expect(throws: ConfigError.self) { try Settings.parse(toml) }
+}
+
 @Test func parsesAerospaceCommands() {
     #expect(parseCommand("resize smart -50") == .resize(-50))
     #expect(parseCommand("resize +50") == .resize(50))
