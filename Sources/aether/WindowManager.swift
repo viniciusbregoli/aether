@@ -196,7 +196,6 @@ final class WindowManager {
         var running: Set<pid_t> = []
         var incompleteApps: Set<String> = []
         var excludedAll: Set<CGWindowID> = []
-        var fullscreenShown = false
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != getpid() {
             let pid = app.processIdentifier
@@ -214,7 +213,6 @@ final class WindowManager {
                 }
                 guard manageable else {
                     excluded.insert(id)
-                    if (element.get("AXFullScreen") as Bool?) == true { fullscreenShown = true }
                     continue
                 }
                 discovered[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
@@ -225,12 +223,11 @@ final class WindowManager {
             excludedAll.formUnion(excluded)
             if !complete { incompleteApps.insert(app.bundleIdentifier ?? "") }
         }
-        // A native fullscreen window gets its own Space, and AX only lists windows of the Spaces on
-        // screen: the missing ones are out of sight, not closed, so keep them until we're back.
-        // shortcut: a window closed meanwhile lingers until fullscreen ends.
-        if fullscreenShown {
-            alive.merge(windows.filter { running.contains($0.value.pid) && !excludedAll.contains($0.key) }) { fresh, _ in fresh }
-        }
+        // AX only lists windows of the Spaces on screen, and on the way out of a native fullscreen
+        // Space it briefly lists none. A missing window that still sits on some Space is out of
+        // sight, not closed.
+        let missing = windows.filter { alive[$0.key] == nil && running.contains($0.value.pid) && !excludedAll.contains($0.key) }
+        alive.merge(missing.filter { isOnSomeSpace($0.key) }) { fresh, _ in fresh }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
