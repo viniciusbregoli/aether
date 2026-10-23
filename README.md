@@ -22,7 +22,7 @@ aether takes AeroSpace's approach and adds the Hyprland feel within that limit: 
 
 ## Features
 
-- **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion layout too, and per-window resizing.
+- **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion, master and scrolling layouts too, and resizing.
 - **Workspaces in memory**, 1-9 and A-Z. Windows of hidden workspaces are parked in a screen corner, the AeroSpace way, so switching is instant and doesn't touch macOS Spaces.
 - **Animations**: windows glide to their new place, and switching workspaces slides them sideways.
 - **Animated gradient border** around the focused window.
@@ -90,8 +90,10 @@ Appearance and workspace controls retain the existing defaults:
 | `animation-curve` | `'ease-out-cubic'` | Also accepts `'linear'` and `'ease-in-out-cubic'`. |
 | `border-enabled` | `true` | Show the focused-window outline. Width zero also hides it. |
 | `border-animation-enabled` | `true` | Rotate the gradient; false keeps it static. |
-| `default-layout` | `'dwindle'` | Also accepts `'accordion'`. Manual and saved workspace layouts take precedence; reset-layout returns to this default. |
+| `default-layout` | `'dwindle'` | Also accepts `'accordion'`, `'master'` and `'scrolling'`. Manual and saved workspace layouts take precedence; reset-layout returns to this default. |
 | `dwindle-split-ratio` | `0.5` | First/top/left child's fraction, from `0.1` to `0.9`. Saved and manually resized splits take precedence. |
+| `master-ratio` | `0.55` | Master layout: the first window's share of the width, from `0.1` to `0.9`. Saved and manually resized ratios take precedence. |
+| `scrolling-column-width` | `0.5` | Scrolling layout: each column's share of the width, from `0.1` to `1.0`. Saved and manually resized widths take precedence. |
 | `workspace-auto-back-and-forth` | `false` | Selecting the current workspace returns to the previous one. Focus-driven switches are unaffected. |
 
 `animation-duration = 0` makes window movement immediate. `animations-enabled = false` also stops border rotation. In-flight animations keep their original timing and curve; disabling motion during reload finishes their moves, including parking outgoing windows. `border-colors` accepts a single color for a solid outline; `border-radius` rounds only the overlay, not the app's window. Duration, width and radius must be finite and nonnegative, rotation seconds must be finite and positive, and the color list must not be empty.
@@ -128,6 +130,15 @@ These controls take ideas from [Hyprland's configuration](https://wiki.hypr.land
     gaps-outer = 0
     default-layout = 'accordion'
 ```
+
+### Layouts
+
+Switch with `layout dwindle`, `layout accordion`, `layout master` or `layout scrolling` (the default bindings cover the first two; bind the others in `[mode.main.binding]`). The layout is per workspace.
+
+- **Master** is Hyprland's master layout: the first window fills the left `master-ratio` of the width and the others stack on the right, sharing the height equally. `resize` moves the divider (growing the master or any stack window pushes it the right way) and the ratio is saved per workspace. `move` swaps with the neighbour in that direction.
+- **Scrolling** is Hyprland's scrolling layout, as in niri and PaperWM: every window is a full-height column of `scrolling-column-width`, left to right. The view scrolls only as far as needed to show the focused column entirely, and stays put while the focused column is already visible. `move left/right` swaps with the previous/next column. `resize` changes the column width of the whole workspace (not one column), from `0.1` to `1.0` of the width, and it is saved per workspace. The scroll position itself is not saved.
+
+Columns outside the screen keep their position on the strip. macOS may refuse to put a window fully off-screen and clamp it to the screen edge, so those columns can peek in at the sides until they are scrolled to.
 
 Commands: `workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
 
