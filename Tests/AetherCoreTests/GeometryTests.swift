@@ -190,3 +190,88 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(full.matched == [0: 40])
     #expect(full.deferred.isEmpty)
 }
+
+@Test func masterFillsAreaWithoutOverlap() {
+    for count in 1...6 {
+        let frames = master(count: count, in: screen, gap: 10, ratio: 0.55)
+        #expect(frames.count == count)
+        for (i, a) in frames.enumerated() {
+            #expect(screen.contains(a))
+            for b in frames[(i + 1)...] { #expect(!a.intersects(b)) }
+        }
+    }
+    #expect(master(count: 0, in: screen, gap: 10, ratio: 0.55).isEmpty)
+}
+
+@Test func masterTakesRatioOfWidthAndStacksTheRest() {
+    #expect(master(count: 1, in: screen, gap: 10, ratio: 0.55) == [screen])
+    #expect(master(count: 2, in: screen, gap: 0, ratio: 0.6) == [
+        CGRect(x: 0, y: 0, width: 600, height: 600),
+        CGRect(x: 600, y: 0, width: 400, height: 600),
+    ])
+    let f = master(count: 5, in: screen, gap: 10, ratio: 0.5)
+    #expect(f[0] == CGRect(x: 0, y: 0, width: 495, height: 600))
+    #expect(f[1...].allSatisfy { $0.minX == 505 && $0.maxX == 1000 && $0.height == 142.5 })
+    #expect(f[1...].map(\.minY) == [0, 152.5, 305, 457.5])
+}
+
+@Test func masterResizeMovesDividerTowardGrowingWindow() {
+    let grown = resizedMasterRatio(0.5, index: 0, delta: 99, count: 3, in: screen, gap: 10)
+    #expect(abs(grown - 0.6) < 1e-9)
+    let shrunk = resizedMasterRatio(0.5, index: 2, delta: 99, count: 3, in: screen, gap: 10)
+    #expect(abs(shrunk - 0.4) < 1e-9)
+    #expect(resizedMasterRatio(0.5, index: 0, delta: 5000, count: 3, in: screen, gap: 10) == 0.9)
+    #expect(resizedMasterRatio(0.5, index: 0, delta: -5000, count: 3, in: screen, gap: 10) == 0.1)
+    #expect(resizedMasterRatio(0.5, index: 0, delta: 99, count: 1, in: screen, gap: 10) == 0.5)
+}
+
+@Test func scrollingLaysColumnsOutLeftToRight() {
+    #expect(scrolling(count: 0, focused: 0, offset: 0, columnWidth: 0.5, in: screen, gap: 10).frames.isEmpty)
+    let one = scrolling(count: 1, focused: 0, offset: 0, columnWidth: 0.5, in: screen, gap: 10)
+    #expect(one.frames == [CGRect(x: 0, y: 0, width: 500, height: 600)])
+    let four = scrolling(count: 4, focused: 0, offset: 0, columnWidth: 0.5, in: screen, gap: 10)
+    #expect(four.frames.map(\.minX) == [0, 510, 1020, 1530])
+    #expect(four.frames.allSatisfy { $0.width == 500 && $0.height == 600 })
+    let full = scrolling(count: 2, focused: 1, offset: 0, columnWidth: 1, in: screen, gap: 10)
+    #expect(full.frames.map(\.minX) == [-1010, 0])
+}
+
+@Test func scrollingKeepsViewWhenFocusedColumnIsVisible() {
+    let start = scrolling(count: 3, focused: 2, offset: 0, columnWidth: 0.4, in: screen, gap: 10)
+    #expect(start.offset == 220)
+    let same = scrolling(count: 3, focused: 1, offset: start.offset, columnWidth: 0.4, in: screen, gap: 10)
+    #expect(same.offset == 220)
+    #expect(same.frames[1].minX == 190)
+}
+
+@Test func scrollingMovesAsLittleAsNeeded() {
+    // Focus right of the view: the column's right edge lands on the area's edge.
+    let right = scrolling(count: 4, focused: 3, offset: 0, columnWidth: 0.5, in: screen, gap: 10)
+    #expect(right.offset == 1030)
+    #expect(right.frames[3].maxX == 1000)
+    // Focus left of the view: the column's left edge lands on the area's edge.
+    let left = scrolling(count: 4, focused: 1, offset: right.offset, columnWidth: 0.5, in: screen, gap: 10)
+    #expect(left.offset == 510)
+    #expect(left.frames[1].minX == 0)
+}
+
+@Test func scrollingOffsetStaysOnTheStrip() {
+    #expect(scrolling(count: 2, focused: 0, offset: 800, columnWidth: 0.5, in: screen, gap: 10).offset == 0)
+    #expect(scrolling(count: 4, focused: 3, offset: 5000, columnWidth: 0.5, in: screen, gap: 10).offset == 1030)
+    #expect(scrolling(count: 4, focused: 0, offset: -5, columnWidth: 0.5, in: screen, gap: 10).offset == 0)
+    #expect(scrolling(count: 3, focused: 9, offset: 0, columnWidth: 0.5, in: screen, gap: 10).offset == 520)
+}
+
+@Test func scrollingRespectsAreaOrigin() {
+    let area = CGRect(x: 10, y: 20, width: 1000, height: 600)
+    let f = scrolling(count: 3, focused: 2, offset: 0, columnWidth: 0.5, in: area, gap: 10).frames
+    #expect(f[2].maxX == area.maxX)
+    #expect(f.allSatisfy { $0.minY == 20 && $0.height == 600 })
+}
+
+@Test func columnResizeIsClamped() {
+    #expect(abs(resizedColumnWidth(0.5, delta: 100, in: screen) - 0.6) < 1e-9)
+    #expect(abs(resizedColumnWidth(0.5, delta: -100, in: screen) - 0.4) < 1e-9)
+    #expect(resizedColumnWidth(0.5, delta: 5000, in: screen) == 1)
+    #expect(resizedColumnWidth(0.5, delta: -5000, in: screen) == 0.1)
+}
