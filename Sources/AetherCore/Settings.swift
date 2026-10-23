@@ -3,7 +3,7 @@ import Foundation
 import TOMLDecoder
 
 public enum Layout: String, Codable, Sendable {
-    case dwindle, accordion
+    case dwindle, accordion, master, scrolling
 }
 
 public enum Action: Equatable, Sendable {
@@ -45,6 +45,8 @@ public func parseCommand(_ command: String) -> Action? {
     case ("layout", 1...):
         if args.contains("floating") { return .toggleFloating }
         if args[0] == "accordion" { return .layout(.accordion) }
+        if args[0] == "master" { return .layout(.master) }
+        if args[0] == "scrolling" { return .layout(.scrolling) }
         if args[0] == "dwindle" || args[0] == "tiles" { return .layout(.dwindle) }
         return nil
     case ("exec-and-forget", 1...):
@@ -83,6 +85,8 @@ public struct Settings: Equatable, Sendable {
     public var accordionPadding: CGFloat
     public var defaultLayout: Layout
     public var dwindleSplitRatio: CGFloat
+    public var masterRatio: CGFloat
+    public var scrollingColumnWidth: CGFloat
     public var workspaceAutoBackAndForth: Bool
     public var animationsEnabled: Bool
     public var animationDuration: Double
@@ -166,7 +170,11 @@ public struct Settings: Equatable, Sendable {
             guard value.isFinite, value >= 0 else { throw ConfigError(description: "\(key) must be finite and nonnegative") }
         }
         guard rotation.isFinite, rotation > 0 else { throw ConfigError(description: "border-rotation-seconds must be finite and positive") }
+        let masterRatio = user.masterRatio ?? base.masterRatio!
+        let columnWidth = user.scrollingColumnWidth ?? base.scrollingColumnWidth!
         guard ratio.isFinite, (0.1...0.9).contains(ratio) else { throw ConfigError(description: "dwindle-split-ratio must be between 0.1 and 0.9") }
+        guard masterRatio.isFinite, (0.1...0.9).contains(masterRatio) else { throw ConfigError(description: "master-ratio must be between 0.1 and 0.9") }
+        guard columnWidth.isFinite, (0.1...1).contains(columnWidth) else { throw ConfigError(description: "scrolling-column-width must be between 0.1 and 1.0") }
         guard !parsedColors.isEmpty else { throw ConfigError(description: "border-colors must not be empty") }
 
         return Settings(
@@ -176,6 +184,8 @@ public struct Settings: Equatable, Sendable {
             accordionPadding: CGFloat(user.accordionPadding ?? base.accordionPadding!),
             defaultLayout: user.defaultLayout ?? base.defaultLayout!,
             dwindleSplitRatio: CGFloat(ratio),
+            masterRatio: CGFloat(masterRatio),
+            scrollingColumnWidth: CGFloat(columnWidth),
             workspaceAutoBackAndForth: user.workspaceAutoBackAndForth ?? base.workspaceAutoBackAndForth!,
             animationsEnabled: user.animationsEnabled ?? base.animationsEnabled!,
             animationDuration: duration,
@@ -201,6 +211,8 @@ private struct RawConfig: Decodable {
     var accordionPadding: Double?
     var defaultLayout: Layout?
     var dwindleSplitRatio: Double?
+    var masterRatio: Double?
+    var scrollingColumnWidth: Double?
     var workspaceAutoBackAndForth: Bool?
     var animationsEnabled: Bool?
     var animationDuration: Double?
@@ -222,6 +234,7 @@ private struct RawConfig: Decodable {
         case onWindowDetected = "on-window-detected"
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
+        case masterRatio = "master-ratio", scrollingColumnWidth = "scrolling-column-width"
         case workspaceAutoBackAndForth = "workspace-auto-back-and-forth"
         case animationsEnabled = "animations-enabled", animationDuration = "animation-duration", animationCurve = "animation-curve"
         case borderEnabled = "border-enabled", borderAnimationEnabled = "border-animation-enabled"

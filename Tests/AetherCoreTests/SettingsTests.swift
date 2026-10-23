@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import AetherCore
 
@@ -13,6 +14,8 @@ import Testing
     #expect(settings.borderEnabled && settings.borderAnimationEnabled)
     #expect(settings.defaultLayout == .dwindle)
     #expect(settings.dwindleSplitRatio == 0.5)
+    #expect(settings.masterRatio == 0.55)
+    #expect(settings.scrollingColumnWidth == 0.5)
     #expect(!settings.workspaceAutoBackAndForth)
     #expect(settings.modes["main"]?["alt-1"] == [.workspace("1")])
     #expect(settings.modes["main"]?["alt-h"] == [.workspace("H")])
@@ -80,7 +83,9 @@ import Testing
 
 @Test(arguments: [
     "animation-duration = -0.1", "animation-duration = inf", "animation-duration = nan",
-    "animation-curve = 'spring'", "default-layout = 'master'",
+    "animation-curve = 'spring'", "default-layout = 'spiral'",
+    "master-ratio = 0.09", "master-ratio = 0.91", "master-ratio = nan",
+    "scrolling-column-width = 0.09", "scrolling-column-width = 1.01", "scrolling-column-width = nan",
     "dwindle-split-ratio = 0.09", "dwindle-split-ratio = 0.91", "dwindle-split-ratio = nan",
     "border-width = -1", "border-radius = inf", "border-rotation-seconds = 0",
     "border-rotation-seconds = -1", "border-rotation-seconds = nan", "border-colors = []",
@@ -131,6 +136,23 @@ import Testing
     "workspaces = ['a']\n[workspace.3]\ngaps-inner = 1",
 ]) func invalidWorkspaceOverridesAreReported(_ toml: String) {
     #expect(throws: ConfigError.self) { try Settings.parse(toml) }
+
+@Test func parsesMasterAndScrollingSettings() throws {
+    for layout in [Layout.master, .scrolling] {
+        #expect(try Settings.parse("default-layout = '\(layout.rawValue)'").defaultLayout == layout)
+    }
+    let settings = try Settings.parse("master-ratio = 0.7\nscrolling-column-width = 1.0")
+    #expect(settings.masterRatio == 0.7)
+    #expect(settings.scrollingColumnWidth == 1)
+    #expect(try Settings.parse("master-ratio = 0.1").masterRatio == 0.1)
+    #expect(try Settings.parse("master-ratio = 0.9").masterRatio == 0.9)
+    #expect(try Settings.parse("scrolling-column-width = 0.1").scrollingColumnWidth == 0.1)
+}
+
+@Test func layoutRawValuesStayStableInSavedState() throws {
+    let old = try JSONDecoder().decode([String: Layout].self, from: Data(#"{"1":"dwindle","2":"accordion"}"#.utf8))
+    #expect(old == ["1": .dwindle, "2": .accordion])
+    #expect(Layout.master.rawValue == "master" && Layout.scrolling.rawValue == "scrolling")
 }
 
 @Test func parsesAerospaceCommands() {
@@ -138,6 +160,8 @@ import Testing
     #expect(parseCommand("resize +50") == .resize(50))
     #expect(parseCommand("layout tiles horizontal vertical") == .layout(.dwindle))
     #expect(parseCommand("layout accordion horizontal vertical") == .layout(.accordion))
+    #expect(parseCommand("layout master") == .layout(.master))
+    #expect(parseCommand("layout scrolling") == .layout(.scrolling))
     #expect(parseCommand("layout floating tiling") == .toggleFloating)
     #expect(parseCommand("flatten-workspace-tree") == .resetLayout)
     #expect(parseCommand("move sideways") == nil)
