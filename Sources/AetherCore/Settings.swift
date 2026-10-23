@@ -69,6 +69,13 @@ public func parseHexColor(_ hex: String) -> [CGFloat]? {
     return [24, 16, 8, 0].map { CGFloat((bytes >> $0) & 0xFF) / 255 }
 }
 
+/// A `[workspace.<name>]` table: keys left out inherit the global value.
+public struct WorkspaceOverride: Equatable, Sendable {
+    public var gapsInner: CGFloat?
+    public var gapsOuter: CGFloat?
+    public var defaultLayout: Layout?
+}
+
 public struct Settings: Equatable, Sendable {
     public var workspaces: [String]
     public var gapsInner: CGFloat
@@ -89,8 +96,13 @@ public struct Settings: Equatable, Sendable {
     public var floatingApps: Set<String>
     public var reuseWindowApps: Set<String>
     public var windowRules: [WindowRule]
+    public var workspaceOverrides: [String: WorkspaceOverride]
     /// mode -> binding ("alt-shift-h") -> actions run in order.
     public var modes: [String: [String: [Action]]]
+
+    public func gapsInner(in workspace: String) -> CGFloat { workspaceOverrides[workspace]?.gapsInner ?? gapsInner }
+    public func gapsOuter(in workspace: String) -> CGFloat { workspaceOverrides[workspace]?.gapsOuter ?? gapsOuter }
+    public func defaultLayout(in workspace: String) -> Layout { workspaceOverrides[workspace]?.defaultLayout ?? defaultLayout }
 
     /// Keys missing from `toml` fall back to `defaultConfig`; `[mode.*]` tables replace the
     /// default bindings as a whole, like AeroSpace.
@@ -133,6 +145,18 @@ public struct Settings: Equatable, Sendable {
             }
         }
 
+        var overrides: [String: WorkspaceOverride] = [:]
+        for (name, raw) in user.workspace ?? [:] {
+            guard workspaces.contains(name) else { throw ConfigError(description: "[workspace.\(name)] is not in workspaces") }
+            for (key, value) in [("gaps-inner", raw.gapsInner), ("gaps-outer", raw.gapsOuter)] {
+                guard value.map({ $0.isFinite && $0 >= 0 }) ?? true else {
+                    throw ConfigError(description: "\(key) in [workspace.\(name)] must be finite and nonnegative")
+                }
+            }
+            overrides[name] = WorkspaceOverride(gapsInner: raw.gapsInner.map { CGFloat($0) }, gapsOuter: raw.gapsOuter.map { CGFloat($0) },
+                                                defaultLayout: raw.defaultLayout)
+        }
+
         let duration = user.animationDuration ?? base.animationDuration!
         let width = user.borderWidth ?? base.borderWidth!
         let radius = user.borderRadius ?? base.borderRadius!
@@ -165,6 +189,7 @@ public struct Settings: Equatable, Sendable {
             floatingApps: Set(user.floatingApps ?? base.floatingApps!),
             reuseWindowApps: Set(user.reuseWindowApps ?? base.reuseWindowApps!),
             windowRules: windowRules,
+            workspaceOverrides: overrides,
             modes: modes)
     }
 }
@@ -189,10 +214,11 @@ private struct RawConfig: Decodable {
     var floatingApps: [String]?
     var reuseWindowApps: [String]?
     var onWindowDetected: [RawRule]?
+    var workspace: [String: RawWorkspace]?
     var mode: [String: RawMode]?
 
     enum CodingKeys: String, CodingKey {
-        case workspaces, mode
+        case workspaces, workspace, mode
         case onWindowDetected = "on-window-detected"
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
@@ -202,6 +228,16 @@ private struct RawConfig: Decodable {
         case borderWidth = "border-width", borderRadius = "border-radius", borderColors = "border-colors"
         case borderRotationSeconds = "border-rotation-seconds"
         case floatingApps = "floating-apps", reuseWindowApps = "reuse-window-apps"
+    }
+}
+
+private struct RawWorkspace: Decodable {
+    var gapsInner: Double?
+    var gapsOuter: Double?
+    var defaultLayout: Layout?
+
+    enum CodingKeys: String, CodingKey {
+        case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", defaultLayout = "default-layout"
     }
 }
 
