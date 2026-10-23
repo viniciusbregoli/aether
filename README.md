@@ -131,6 +131,24 @@ These controls take ideas from [Hyprland's configuration](https://wiki.hypr.land
 
 Commands: `workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
 
+## Command line
+
+`aether` with no arguments runs the window manager. With arguments it talks to the running instance over a Unix socket at `/tmp/aether-<username>.sock` (readable only by you), prints the reply and exits with the server's status. It does not need Accessibility access.
+
+```sh
+aether workspace 3                  # any command a binding accepts
+aether layout accordion
+aether list-workspaces              # every workspace name
+aether list-workspaces --focused    # the current one
+aether list-workspaces --occupied   # those with windows, plus the current one
+aether list-windows                 # <window id> | <workspace> | <app> | <title>
+aether list-windows --workspace 2
+aether list-windows --focused       # windows of the current workspace
+aether --help
+```
+
+Unknown commands print an error and exit with status 1, and so does any call while aether is not running. Starting a second aether prints a message and exits.
+
 ## How it works
 
 - **Windows** are found and moved with the Accessibility API. The one private call is `_AXUIElementGetWindow`, which AeroSpace uses too, to get stable window ids.
