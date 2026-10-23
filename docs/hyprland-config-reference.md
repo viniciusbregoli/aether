@@ -130,7 +130,7 @@ All candidates require matching optional fields/CodingKeys in `Settings.swift`, 
 ## Explicit deferrals
 
 - Third-party active/inactive opacity, blur, true rounding, window shaders, motion blur, wobble and direct scanout/HDR/render scheduling require capabilities aether does not have. Do not add inert TOML keys for them.
-- Native macOS Spaces creation/reassignment, per-monitor workspace ownership, XWayland, DRM/GPU selection, Wayland layer/input capture protocols, lockscreen/portal configuration and XKB input policy are not small ports of this single-monitor AX manager.
+- Native macOS Spaces creation/reassignment, XWayland, DRM/GPU selection, Wayland layer/input capture protocols, lockscreen/portal configuration and XKB input policy are not small ports of this AX manager. Per-monitor workspaces exist, AeroSpace style.
 - Global trackpad gesture interception and 1:1 workspace gestures need separate macOS feasibility work; do not claim Hyprland gesture parity based on an NSEvent monitor.
 - Existing configurable gaps, width, colors and duration already change real behavior. Strengthen their boundary validation when touched; avoid duplicating them merely to resemble upstream naming.
 

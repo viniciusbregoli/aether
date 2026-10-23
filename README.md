@@ -24,6 +24,7 @@ aether takes AeroSpace's approach and adds the Hyprland feel within that limit: 
 
 - **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion, master and scrolling layouts too, and resizing.
 - **Workspaces in memory**, 1-9 and A-Z. Windows of hidden workspaces are parked in a screen corner, the AeroSpace way, so switching is instant and doesn't touch macOS Spaces.
+- **Multiple monitors**: each monitor shows its own workspace, and windows dragged to another monitor join the workspace shown there.
 - **Animations**: windows glide to their new place, and switching workspaces slides them sideways.
 - **Animated gradient border** around the focused window, and optional dimming of the inactive ones.
 - **Menu bar item** with the current workspace and a menu to jump between them.
@@ -144,7 +145,23 @@ Switch with `layout dwindle`, `layout accordion`, `layout master` or `layout scr
 
 Columns outside the screen keep their position on the strip. macOS may refuse to put a window fully off-screen and clamp it to the screen edge, so those columns can peek in at the sides until they are scrolled to.
 
-Commands: `workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
+### Multiple monitors
+
+Each monitor shows one workspace, the AeroSpace way. `workspace <name>` on a workspace that another monitor shows moves focus to that monitor; any other workspace replaces the one on the focused monitor. A monitor that gets connected shows the first empty workspace, one that goes away takes its workspace into hiding, and the monitor assignments are saved with the layout.
+
+`focus-monitor` and `move-node-to-monitor` take `left`, `right`, `up`, `down`, `next` or `prev`. `next` and `prev` go through the monitors left to right and always wrap; AeroSpace's `--wrap-around` flag is accepted and ignored. They have no default bindings, for example:
+
+```toml
+[mode.main.binding]
+    alt-ctrl-h = 'focus-monitor left'
+    alt-ctrl-l = 'focus-monitor right'
+    alt-ctrl-shift-h = 'move-node-to-monitor left'
+    alt-ctrl-shift-l = 'move-node-to-monitor right'
+```
+
+Dragging a window so that its center lands on another monitor moves it to that monitor's workspace. Workspace switches slide sideways unless that would carry windows across a neighbouring monitor; then they slide vertically, or not at all.
+
+Commands: `workspace`, `move-node-to-workspace`, `focus-monitor`, `move-node-to-monitor`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
 
 ## Command line
 
@@ -174,7 +191,7 @@ Unknown commands print an error and exit with status 1, and so does any call whi
 
 ## Limitations
 
-- One monitor: everything happens on the main display for now.
+- Windows found when aether starts without saved state all go to the focused workspace, whatever monitor they are on.
 - Effects on other apps' windows (rounded corners, blur, transparency) need SIP partly disabled, so aether doesn't do them.
 - A window's own child windows (sheets, attached popovers) are in the same stack group, so an inactive window's overlay is drawn over them too.
 - Opening an app on a workspace where it has no windows sends it cmd-N, so Cmd-Tab to such an app also opens a window, and apps where cmd-N means something else get that action.
