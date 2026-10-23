@@ -63,19 +63,21 @@ public func resizedMasterRatio(_ ratio: CGFloat, index: Int, delta: CGFloat, cou
 
 /// Hyprland's scrolling layout: full-height columns of `columnWidth` (a fraction of the area)
 /// laid out left to right on a strip that is shifted left by `offset`. The returned offset is
-/// the given one moved as little as needed to show column `focused` entirely. Columns outside
+/// the given one (clamped to the strip) moved as little as needed to show column `focused` entirely. Columns outside
 /// the area keep their position on the strip, so their frames can lie off-screen.
-public func scrolling(count: Int, focused: Int, offset: CGFloat, columnWidth: CGFloat, in rect: CGRect, gap: CGFloat) -> (frames: [CGRect], offset: CGFloat) {
+public func scrolling(count: Int, focused: Int?, offset: CGFloat, columnWidth: CGFloat, in rect: CGRect, gap: CGFloat) -> (frames: [CGRect], offset: CGFloat) {
     guard count > 0 else { return ([], 0) }
     let width = rect.width * columnWidth
     let column = { (i: Int) in rect.minX + CGFloat(i) * (width + gap) }
     let strip = column(count - 1) + width - rect.minX
     var offset = min(max(offset, 0), max(strip - rect.width, 0))
-    let focusedX = column(min(max(focused, 0), count - 1))
-    if focusedX - offset < rect.minX {
-        offset = focusedX - rect.minX
-    } else if focusedX + width - offset > rect.maxX {
-        offset = focusedX + width - rect.maxX
+    if let focused {
+        let x = column(min(max(focused, 0), count - 1))
+        if x - offset < rect.minX {
+            offset = x - rect.minX
+        } else if x + width - offset > rect.maxX {
+            offset = x + width - rect.maxX
+        }
     }
     return ((0..<count).map { CGRect(x: column($0) - offset, y: rect.minY, width: width, height: rect.height) }, offset)
 }

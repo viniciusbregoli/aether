@@ -260,6 +260,8 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(scrolling(count: 4, focused: 3, offset: 5000, columnWidth: 0.5, in: screen, gap: 10).offset == 1030)
     #expect(scrolling(count: 4, focused: 0, offset: -5, columnWidth: 0.5, in: screen, gap: 10).offset == 0)
     #expect(scrolling(count: 3, focused: 9, offset: 0, columnWidth: 0.5, in: screen, gap: 10).offset == 520)
+    // Without a focused column (a floating window has focus) the view stays where it was.
+    #expect(scrolling(count: 4, focused: nil, offset: 300, columnWidth: 0.5, in: screen, gap: 10).offset == 300)
 }
 
 @Test func scrollingRespectsAreaOrigin() {
