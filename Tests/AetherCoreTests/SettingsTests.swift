@@ -93,6 +93,15 @@ import Testing
     }
 }
 
+@Test func smartGapsAndBorderAreOffByDefaultAndParse() throws {
+    let defaults = try Settings.parse(defaultConfig)
+    #expect(!defaults.smartGaps)
+    #expect(!defaults.smartBorder)
+    let settings = try Settings.parse("smart-gaps = true\nsmart-border = true")
+    #expect(settings.smartGaps)
+    #expect(settings.smartBorder)
+}
+
 @Test(arguments: [
     "dim-inactive = -0.1", "dim-inactive = 1.1", "dim-inactive = nan", "dim-inactive = inf",
     "dim-color = 'gray'", "dim-color = '#fff'",

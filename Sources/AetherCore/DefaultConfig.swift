@@ -11,6 +11,8 @@ workspaces = ['1', '2', '3', '4', '5', '6', '7', '8', '9',
 
 gaps-inner = 10
 gaps-outer = 10
+# No outer gaps while a workspace has a single tiled window.
+smart-gaps = false
 accordion-padding = 30
 # Manual and saved workspace layouts override this default.
 default-layout = 'dwindle' # dwindle, accordion, master or scrolling
@@ -36,6 +38,8 @@ border-radius = 12
 border-colors = ['#64d2ff', '#bf5af2', '#64d2ff']
 border-animation-enabled = true # false leaves the gradient static.
 border-rotation-seconds = 6
+# Hide the border while the focused window is the only tiled one on its workspace.
+smart-border = false
 
 # Covers every visible window except the focused one with a translucent layer of dim-color.
 dim-inactive = 0.0 # 0 is off; 0.0 to 1.0 is the layer's opacity.
