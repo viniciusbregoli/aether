@@ -458,6 +458,8 @@ final class WindowManager {
         let ids = tiled
         guard let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
         let next: Int?
+        // Scrolling columns have no vertical neighbours.
+        if currentLayout == .scrolling && (direction == .up || direction == .down) { return }
         if currentLayout == .accordion || currentLayout == .scrolling {
             // Accordion frames overlap and scrolling ones can be off-screen, so geometry can't find a neighbour; use list order.
             let step = direction == .left || direction == .up ? -1 : 1
@@ -554,6 +556,11 @@ final class WindowManager {
             }
         }
         parked.removeAll()
+        // Scrolling can leave columns of the current workspace off screen too.
+        for id in workspaces[current] {
+            guard let window = windows[id], let frame = window.frame, !screen.contains(frame.origin) else { continue }
+            window.setPosition(CGPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
+        }
     }
 
     // MARK: Config
