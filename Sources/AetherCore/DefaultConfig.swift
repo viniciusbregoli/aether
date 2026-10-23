@@ -40,6 +40,19 @@ floating-apps = ['com.apple.finder', 'com.apple.QuickTimePlayerX', 'com.TablePro
 # current one (cmd-N). Apps listed here jump to their existing window instead.
 reuse-window-apps = ['app.zen-browser.zen']
 
+# AeroSpace's [[on-window-detected]] rules run on newly detected windows, in order. The first
+# match applies and stops unless check-further-callbacks = true. All if.* keys are optional;
+# the regex ones are case-insensitive substring searches. The window title can still be empty
+# when the window appears, so title rules may miss. run takes 'layout floating',
+# 'layout tiling' and 'move-node-to-workspace <name>'; floating-apps applies first.
+# [[on-window-detected]]
+#     if.app-id = 'com.mitchellh.ghostty'
+#     if.app-name-regex-substring = 'ghostty'
+#     if.window-title-regex-substring = 'picture-in-picture'
+#     if.workspace = '1'
+#     run = ['layout floating', 'move-node-to-workspace 2']
+#     check-further-callbacks = false
+
 [mode.main.binding]
     alt-slash = 'layout dwindle'
     alt-comma = 'layout accordion'
