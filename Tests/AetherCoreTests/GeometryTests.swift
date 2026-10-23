@@ -169,3 +169,24 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(!needsParking(origin: CGPoint(x: 40, y: 40), corner: corner, isAnimating: true))
     #expect(!needsParking(origin: nil, corner: corner, isAnimating: false))
 }
+
+@Test func incrementalRestoreDefersUnreadableApps() {
+    let saved = [
+        WindowKey(id: 1, bundleId: "term", title: "a"),
+        WindowKey(id: 2, bundleId: "web", title: "docs"),
+        WindowKey(id: 3, bundleId: "web", title: "mail"),
+    ]
+    // "web" answered only partly: window 2 by id, and an unknown window that must not take slot 3.
+    let alive = [
+        WindowKey(id: 1, bundleId: "term", title: "a"),
+        WindowKey(id: 2, bundleId: "web", title: "docs"),
+        WindowKey(id: 40, bundleId: "web", title: "other"),
+    ]
+    let partial = matchIncrementally(saved: saved, alive: alive, deferring: ["web"])
+    #expect(partial.matched == [0: 1, 1: 2])
+    #expect(partial.deferred == [2])
+    // Once "web" answers fully, the leftover entry falls back to the usual matching.
+    let full = matchIncrementally(saved: [saved[2]], alive: [alive[2]], deferring: [])
+    #expect(full.matched == [0: 40])
+    #expect(full.deferred.isEmpty)
+}
