@@ -306,7 +306,7 @@ final class WindowManager {
     }
 
     private var workArea: CGRect {
-        let gap = config.gapsOuter(in: currentName)
+        let gap = config.smartGaps && tiled.count == 1 ? 0 : config.gapsOuter(in: currentName)
         return screenRect.insetBy(dx: gap, dy: gap)
     }
 
@@ -390,7 +390,7 @@ final class WindowManager {
 
     private func updateBorder() {
         guard let id = focusedId, workspace(of: id) == current, !parked.contains(id),
-              let frame = windows[id]?.frame else {
+              !(config.smartBorder && tiled == [id]), let frame = windows[id]?.frame else {
             borderTarget = nil
             return border.hide()
         }
