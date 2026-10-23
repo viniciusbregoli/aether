@@ -25,7 +25,7 @@ aether takes AeroSpace's approach and adds the Hyprland feel within that limit: 
 - **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion, master and scrolling layouts too, and resizing.
 - **Workspaces in memory**, 1-9 and A-Z. Windows of hidden workspaces are parked in a screen corner, the AeroSpace way, so switching is instant and doesn't touch macOS Spaces.
 - **Animations**: windows glide to their new place, and switching workspaces slides them sideways.
-- **Animated gradient border** around the focused window.
+- **Animated gradient border** around the focused window, and optional dimming of the inactive ones.
 - **Menu bar item** with the current workspace and a menu to jump between them.
 - **Remembers your layout**: restart aether and every window goes back to its workspace.
 - **New window where you are**: opening an app whose windows are all on other workspaces gives it a new window on the current one, instead of yanking you away. Apps can opt out (Zen does by default).
@@ -90,13 +90,15 @@ Appearance and workspace controls retain the existing defaults:
 | `animation-curve` | `'ease-out-cubic'` | Also accepts `'linear'` and `'ease-in-out-cubic'`. |
 | `border-enabled` | `true` | Show the focused-window outline. Width zero also hides it. |
 | `border-animation-enabled` | `true` | Rotate the gradient; false keeps it static. |
+| `dim-inactive` | `0.0` | Opacity from `0.0` to `1.0` of a layer covering every visible window except the focused one. `0` turns dimming off. |
+| `dim-color` | `'#000000'` | Color of that layer, `#rrggbb` or `#rrggbbaa` (the alpha multiplies `dim-inactive`). |
 | `default-layout` | `'dwindle'` | Also accepts `'accordion'`, `'master'` and `'scrolling'`. Manual and saved workspace layouts take precedence; reset-layout returns to this default. |
 | `dwindle-split-ratio` | `0.5` | First/top/left child's fraction, from `0.1` to `0.9`. Saved and manually resized splits take precedence. |
 | `master-ratio` | `0.55` | Master layout: the first window's share of the width, from `0.1` to `0.9`. Saved and manually resized ratios take precedence. |
 | `scrolling-column-width` | `0.5` | Scrolling layout: each column's share of the width, from `0.1` to `1.0`. Saved and manually resized widths take precedence. |
 | `workspace-auto-back-and-forth` | `false` | Selecting the current workspace returns to the previous one. Focus-driven switches are unaffected. |
 
-`animation-duration = 0` makes window movement immediate. `animations-enabled = false` also stops border rotation. In-flight animations keep their original timing and curve; disabling motion during reload finishes their moves, including parking outgoing windows. `border-colors` accepts a single color for a solid outline; `border-radius` rounds only the overlay, not the app's window. Duration, width and radius must be finite and nonnegative, rotation seconds must be finite and positive, and the color list must not be empty.
+`animation-duration = 0` makes window movement immediate. `animations-enabled = false` also stops border rotation. In-flight animations keep their original timing and curve; disabling motion during reload finishes their moves, including parking outgoing windows. `border-colors` accepts a single color for a solid outline; `border-radius` rounds only the overlay, not the app's window. `dim-inactive` must be between 0 and 1, and the overlay corners use `border-radius`. Duration, width and radius must be finite and nonnegative, rotation seconds must be finite and positive, and the color list must not be empty.
 
 These controls take ideas from [Hyprland's configuration](https://wiki.hypr.land/0.56.0/Configuring/), while retaining aether's TOML syntax and defaults. The [configuration reference](docs/hyprland-config-reference.md) maps every documented option family and lists the features that need more macOS work. The [visual references](docs/hyprland-inspiration.md) link to the researched dotfiles setups.
 
@@ -165,12 +167,14 @@ Unknown commands print an error and exit with status 1, and so does any call whi
 - **Windows** are found and moved with the Accessibility API. The one private call is `_AXUIElementGetWindow`, which AeroSpace uses too, to get stable window ids.
 - **Animations** write a window's position every display frame (about 0.2 ms per call) and its size only halfway through and at the end, because a resize makes the app relayout. This is the approach [glide](https://github.com/tmandry/glide) and [rift](https://github.com/acsandmann/rift) take, and it needs no SIP changes.
 - **The border** is a transparent click-through window that follows the focused one, like [JankyBorders](https://github.com/FelixKratz/JankyBorders). Its rotating gradient runs in Core Animation, so it costs nothing per frame.
+- **Dimming** uses one click-through overlay per inactive window, at normal window level and ordered directly above its window, so dialogs and popups of other windows still show on top. Overlays follow the animation frames and are re-ordered after every layout and focus change. The focus border is ordered the same way.
 - **Layout state** is saved to `~/Library/Application Support/aether/state.json` after every change and matched back to live windows by id, then by app and title.
 
 ## Limitations
 
 - One monitor: everything happens on the main display for now.
 - Effects on other apps' windows (rounded corners, blur, transparency) need SIP partly disabled, so aether doesn't do them.
+- A window's own child windows (sheets, attached popovers) are in the same stack group, so an inactive window's overlay is drawn over them too.
 - Opening an app on a workspace where it has no windows sends it cmd-N, so Cmd-Tab to such an app also opens a window, and apps where cmd-N means something else get that action.
 
 ## Credits
