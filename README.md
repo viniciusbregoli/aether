@@ -98,6 +98,37 @@ Appearance and workspace controls retain the existing defaults:
 
 These controls take ideas from [Hyprland's configuration](https://wiki.hypr.land/0.56.0/Configuring/), while retaining aether's TOML syntax and defaults. The [configuration reference](docs/hyprland-config-reference.md) maps every documented option family and lists the features that need more macOS work. The [visual references](docs/hyprland-inspiration.md) link to the researched dotfiles setups.
 
+### Window rules
+
+`[[on-window-detected]]` tables use AeroSpace's syntax, so rules can be copied from `~/.aerospace.toml`:
+
+```toml
+[[on-window-detected]]
+    if.app-id = 'com.mitchellh.ghostty'
+    if.app-name-regex-substring = 'ghostty'
+    if.window-title-regex-substring = 'picture-in-picture'
+    if.workspace = '3'
+    run = ['layout floating', 'move-node-to-workspace 5']
+    check-further-callbacks = false
+```
+
+- Every `if.*` condition is optional and they are ANDed. `app-id` is an exact bundle id; the two `*-regex-substring` conditions are case-insensitive regex searches. `if.workspace` is the workspace the window is about to land on, which is the current one.
+- `run` takes `layout floating`, `layout tiling` and `move-node-to-workspace <name>`. Anything else, an unknown workspace or an invalid regex makes the config fail to load, naming the culprit.
+- Rules run in order and the first match applies and stops, unless it sets `check-further-callbacks = true`. `floating-apps` is applied first, so a rule can override it with `layout tiling`.
+- Rules only run on windows aether sees for the first time, not on windows restored from the saved layout. A window sent to another workspace goes there without switching your workspace.
+- A window's title can still be empty when it first appears, so `window-title-regex-substring` rules can miss windows that set their title late.
+
+### Workspace settings
+
+`[workspace.<name>]` overrides `gaps-inner`, `gaps-outer` and `default-layout` for one workspace, like Hyprland's workspace rules. Keys you leave out use the global value, an unknown workspace name is a config error, and a layout chosen by hand on that workspace still wins over `default-layout`.
+
+```toml
+[workspace.3]
+    gaps-inner = 0
+    gaps-outer = 0
+    default-layout = 'accordion'
+```
+
 Commands: `workspace`, `move-node-to-workspace`, `move`, `resize`, `layout`, `fullscreen`, `workspace-back-and-forth`, `exec-and-forget`, `mode`, `toggle-floating`, `reset-layout`, `close-all-windows-but-current`, `reload-config`, `quit`.
 
 ## How it works
