@@ -82,6 +82,7 @@ public struct Settings: Equatable, Sendable {
     public var workspaces: [String]
     public var gapsInner: CGFloat
     public var gapsOuter: CGFloat
+    public var smartGaps: Bool
     public var accordionPadding: CGFloat
     public var defaultLayout: Layout
     public var dwindleSplitRatio: CGFloat
@@ -97,6 +98,7 @@ public struct Settings: Equatable, Sendable {
     public var borderRadius: CGFloat
     public var borderColors: [[CGFloat]]
     public var borderRotationSeconds: Double
+    public var smartBorder: Bool
     public var dimInactive: CGFloat
     public var dimColor: [CGFloat]
     public var floatingApps: Set<String>
@@ -188,6 +190,7 @@ public struct Settings: Equatable, Sendable {
             workspaces: workspaces,
             gapsInner: CGFloat(user.gapsInner ?? base.gapsInner!),
             gapsOuter: CGFloat(user.gapsOuter ?? base.gapsOuter!),
+            smartGaps: user.smartGaps ?? base.smartGaps!,
             accordionPadding: CGFloat(user.accordionPadding ?? base.accordionPadding!),
             defaultLayout: user.defaultLayout ?? base.defaultLayout!,
             dwindleSplitRatio: CGFloat(ratio),
@@ -203,6 +206,7 @@ public struct Settings: Equatable, Sendable {
             borderRadius: CGFloat(radius),
             borderColors: parsedColors,
             borderRotationSeconds: rotation,
+            smartBorder: user.smartBorder ?? base.smartBorder!,
             dimInactive: CGFloat(dim),
             dimColor: dimColor,
             floatingApps: Set(user.floatingApps ?? base.floatingApps!),
@@ -217,6 +221,7 @@ private struct RawConfig: Decodable {
     var workspaces: [String]?
     var gapsInner: Double?
     var gapsOuter: Double?
+    var smartGaps: Bool?
     var accordionPadding: Double?
     var defaultLayout: Layout?
     var dwindleSplitRatio: Double?
@@ -232,6 +237,7 @@ private struct RawConfig: Decodable {
     var borderRadius: Double?
     var borderColors: [String]?
     var borderRotationSeconds: Double?
+    var smartBorder: Bool?
     var dimInactive: Double?
     var dimColor: String?
     var floatingApps: [String]?
@@ -244,6 +250,7 @@ private struct RawConfig: Decodable {
         case workspaces, workspace, mode
         case onWindowDetected = "on-window-detected"
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
+        case smartGaps = "smart-gaps", smartBorder = "smart-border"
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
         case masterRatio = "master-ratio", scrollingColumnWidth = "scrolling-column-width"
         case workspaceAutoBackAndForth = "workspace-auto-back-and-forth"
