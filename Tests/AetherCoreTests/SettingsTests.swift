@@ -17,6 +17,7 @@ import Testing
     #expect(settings.masterRatio == 0.55)
     #expect(settings.scrollingColumnWidth == 0.5)
     #expect(!settings.workspaceAutoBackAndForth)
+    #expect(!settings.focusFollowsMouse)
     #expect(settings.modes["main"]?["alt-1"] == [.workspace("1")])
     #expect(settings.modes["main"]?["alt-h"] == [.workspace("H")])
     #expect(settings.modes["main"]?["alt-shift-e"] == [.moveToWorkspace("E")])
@@ -67,6 +68,7 @@ import Testing
     default-layout = 'accordion'
     dwindle-split-ratio = 0.7
     workspace-auto-back-and-forth = true
+    focus-follows-mouse = true
     """)
     #expect(!settings.animationsEnabled)
     #expect(settings.animationCurve == .easeInOutCubic)
@@ -76,6 +78,7 @@ import Testing
     #expect(settings.defaultLayout == .accordion)
     #expect(settings.dwindleSplitRatio == 0.7)
     #expect(settings.workspaceAutoBackAndForth)
+    #expect(settings.focusFollowsMouse)
     for ratio in [0.1, 0.9] {
         #expect(try Settings.parse("dwindle-split-ratio = \(ratio)").dwindleSplitRatio == CGFloat(ratio))
     }
