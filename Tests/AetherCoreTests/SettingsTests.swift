@@ -132,10 +132,11 @@ import Testing
     "[workspace.3]\ngaps-inner = -1",
     "[workspace.3]\ngaps-outer = inf",
     "[workspace.3]\ngaps-outer = nan",
-    "[workspace.3]\ndefault-layout = 'master'",
+    "[workspace.3]\ndefault-layout = 'spiral'",
     "workspaces = ['a']\n[workspace.3]\ngaps-inner = 1",
 ]) func invalidWorkspaceOverridesAreReported(_ toml: String) {
     #expect(throws: ConfigError.self) { try Settings.parse(toml) }
+}
 
 @Test func parsesMasterAndScrollingSettings() throws {
     for layout in [Layout.master, .scrolling] {
