@@ -3,10 +3,22 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 
-// The only private API, same as AeroSpace: maps an AX window element to its WindowServer id.
+// Private API, same as AeroSpace: maps an AX window element to its WindowServer id.
 @_silgen_name("_AXUIElementGetWindow")
 @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
+
+// Private API, same as yabai: AX can't see windows of Spaces that aren't on screen, WindowServer can.
+@_silgen_name("CGSMainConnectionID")
+func CGSMainConnectionID() -> Int32
+@_silgen_name("CGSCopySpacesForWindows")
+func CGSCopySpacesForWindows(_ connection: Int32, _ mask: Int32, _ windows: CFArray) -> CFArray
+
+/// A closed window is on no Space; one on a Space that isn't shown still exists.
+func isOnSomeSpace(_ id: CGWindowID) -> Bool {
+    // Mask 7: current, other and fullscreen Spaces.
+    CFArrayGetCount(CGSCopySpacesForWindows(CGSMainConnectionID(), 7, [id] as CFArray)) > 0
+}
 
 var isScreenLocked: Bool {
     guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }

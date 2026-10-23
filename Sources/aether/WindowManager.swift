@@ -195,6 +195,7 @@ final class WindowManager {
         var alive: [CGWindowID: Window] = [:]
         var running: Set<pid_t> = []
         var incompleteApps: Set<String> = []
+        var excludedAll: Set<CGWindowID> = []
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != getpid() {
             let pid = app.processIdentifier
@@ -219,8 +220,14 @@ final class WindowManager {
             let snapshot = reconcileWindowSnapshot(previous: windows.filter { $0.value.pid == pid },
                                                    discovered: discovered, isComplete: complete, excluding: excluded)
             alive.merge(snapshot) { _, fresh in fresh }
+            excludedAll.formUnion(excluded)
             if !complete { incompleteApps.insert(app.bundleIdentifier ?? "") }
         }
+        // AX only lists windows of the Spaces on screen, and on the way out of a native fullscreen
+        // Space it briefly lists none. A missing window that still sits on some Space is out of
+        // sight, not closed.
+        let missing = windows.filter { alive[$0.key] == nil && running.contains($0.value.pid) && !excludedAll.contains($0.key) }
+        alive.merge(missing.filter { isOnSomeSpace($0.key) }) { fresh, _ in fresh }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
