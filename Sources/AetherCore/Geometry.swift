@@ -39,6 +39,52 @@ public func resized(_ ratios: [CGFloat], index: Int, delta: CGFloat, count: Int,
     return ratios
 }
 
+/// Hyprland's master layout: the first window takes `ratio` of the width on the left, the rest
+/// share the right side's height equally.
+public func master(count: Int, in rect: CGRect, gap: CGFloat, ratio: CGFloat) -> [CGRect] {
+    guard count > 0 else { return [] }
+    if count == 1 { return [rect] }
+    let width = (rect.width - gap) * ratio
+    let stackX = rect.minX + width + gap
+    let height = (rect.height - gap * CGFloat(count - 2)) / CGFloat(count - 1)
+    return [CGRect(x: rect.minX, y: rect.minY, width: width, height: rect.height)]
+        + (0..<count - 1).map { i in
+            CGRect(x: stackX, y: rect.minY + CGFloat(i) * (height + gap), width: rect.maxX - stackX, height: height)
+        }
+}
+
+/// Master ratio after growing window `index` by `delta` points: growing the master moves the
+/// divider right, growing a stack window moves it left.
+public func resizedMasterRatio(_ ratio: CGFloat, index: Int, delta: CGFloat, count: Int, in rect: CGRect, gap: CGFloat) -> CGFloat {
+    guard count > 1 else { return ratio }
+    let sign: CGFloat = index == 0 ? 1 : -1
+    return min(max(ratio + sign * delta / (rect.width - gap), 0.1), 0.9)
+}
+
+/// Hyprland's scrolling layout: full-height columns of `columnWidth` (a fraction of the area)
+/// laid out left to right on a strip that is shifted left by `offset`. The returned offset is
+/// the given one moved as little as needed to show column `focused` entirely. Columns outside
+/// the area keep their position on the strip, so their frames can lie off-screen.
+public func scrolling(count: Int, focused: Int, offset: CGFloat, columnWidth: CGFloat, in rect: CGRect, gap: CGFloat) -> (frames: [CGRect], offset: CGFloat) {
+    guard count > 0 else { return ([], 0) }
+    let width = rect.width * columnWidth
+    let column = { (i: Int) in rect.minX + CGFloat(i) * (width + gap) }
+    let strip = column(count - 1) + width - rect.minX
+    var offset = min(max(offset, 0), max(strip - rect.width, 0))
+    let focusedX = column(min(max(focused, 0), count - 1))
+    if focusedX - offset < rect.minX {
+        offset = focusedX - rect.minX
+    } else if focusedX + width - offset > rect.maxX {
+        offset = focusedX + width - rect.maxX
+    }
+    return ((0..<count).map { CGRect(x: column($0) - offset, y: rect.minY, width: width, height: rect.height) }, offset)
+}
+
+/// Column width fraction after growing the focused column by `delta` points.
+public func resizedColumnWidth(_ width: CGFloat, delta: CGFloat, in rect: CGRect) -> CGFloat {
+    min(max(width + delta / rect.width, 0.1), 1)
+}
+
 /// AeroSpace's accordion: every window gets the whole area, and the ones before/after the
 /// focused one peek out by `padding` on the left/right.
 public func accordion(count: Int, focused: Int, in rect: CGRect, padding: CGFloat) -> [CGRect] {
