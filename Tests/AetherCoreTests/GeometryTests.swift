@@ -89,6 +89,17 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(match(saved: [WindowKey(id: 9, bundleId: "a", title: "")], alive: [WindowKey(id: 9, bundleId: "b", title: "")]).isEmpty)
 }
 
+@Test func unreadableSnapshotsPreserveWindowsUntilDiscoveryRecovers() {
+    var windows: [UInt32: String] = [1: "workspace 1", 2: "workspace 2"]
+    windows = reconcileWindowSnapshot(previous: windows, discovered: [:], isComplete: false)
+    #expect(windows == [1: "workspace 1", 2: "workspace 2"])
+    windows = reconcileWindowSnapshot(previous: windows, discovered: [1: "updated", 3: "new"], isComplete: false)
+    #expect(windows == [1: "updated", 2: "workspace 2", 3: "new"])
+    windows = reconcileWindowSnapshot(previous: windows, discovered: [1: "updated", 3: "new"], isComplete: true)
+    #expect(windows == [1: "updated", 3: "new"])
+    #expect(reconcileWindowSnapshot(previous: windows, discovered: [:], isComplete: true).isEmpty)
+}
+
 @Test func easingPresetsAreClampedMonotonicAndDistinct() {
     for curve in AnimationCurve.allCases {
         #expect(curve.value(at: -1) == 0)

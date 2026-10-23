@@ -53,14 +53,22 @@ final class WindowManager {
             scheduleRefresh(followFocus: true)
         }
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification,
-                     NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification,
-                     NSWorkspace.sessionDidBecomeActiveNotification] {
+                     NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
+        }
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification,
+                     NSWorkspace.sessionDidBecomeActiveNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in resumeAfterUnlock() }
         }
         // Unlocking does not always wake the display or switch the user session.
         DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("com.apple.screenIsUnlocked"),
-                                                            object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
+                                                            object: nil, queue: .main) { [unowned self] _ in resumeAfterUnlock() }
+        DistributedNotificationCenter.default().addObserver(forName: NSNotification.Name("com.apple.screenIsLocked"),
+                                                            object: nil, queue: .main) { [unowned self] _ in
+            activatedPid = nil
+            pendingNewWindow = nil
+            border.hide()
+        }
         // AeroSpace's backstop: destroy notifications are unreliable, and a mouse-up after the user
         // drags a tiled window should snap it back into place.
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in scheduleRefresh() }
@@ -92,9 +100,19 @@ final class WindowManager {
         }
     }
 
+    private func resumeAfterUnlock() {
+        activatedPid = nil
+        pendingNewWindow = nil
+        // Unlock can precede AX availability. Retry briefly without forgetting unreadable windows.
+        for delay in [0.05, 0.25, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in scheduleRefresh() }
+        }
+    }
+
     // MARK: Model
 
     private func refresh(followFocus: Bool) {
+        guard !isScreenLocked else { return }
         var alive: [CGWindowID: Window] = [:]
         var running: Set<pid_t> = []
         for app in NSWorkspace.shared.runningApplications
@@ -103,11 +121,23 @@ final class WindowManager {
             running.insert(pid)
             let axApp = AXUIElementCreateApplication(pid)
             observe(pid, axApp)
-            for element in (axApp.get(kAXWindowsAttribute) as [AXUIElement]?) ?? [] {
-                guard let id = element.windowId, isManageable(element) else { continue }
-                alive[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
+            let elements: [AXUIElement]? = axApp.get(kAXWindowsAttribute)
+            var discovered: [CGWindowID: Window] = [:]
+            var complete = elements != nil
+            for element in elements ?? [] {
+                guard let id = element.windowId, let manageable = isManageable(element) else {
+                    complete = false
+                    continue
+                }
+                guard manageable else { continue }
+                discovered[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
             }
+            let snapshot = reconcileWindowSnapshot(previous: windows.filter { $0.value.pid == pid },
+                                                   discovered: discovered, isComplete: complete)
+            alive.merge(snapshot) { _, fresh in fresh }
         }
+        // Locking may have started while an app was answering the AX requests above.
+        guard !isScreenLocked else { return }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -188,10 +218,11 @@ final class WindowManager {
         observers[pid] = observer
     }
 
-    private func isManageable(_ element: AXUIElement) -> Bool {
-        (element.get(kAXSubroleAttribute) as String?) == kAXStandardWindowSubrole
-            && (element.get(kAXMinimizedAttribute) as Bool?) != true
-            && (element.get("AXFullScreen") as Bool?) != true
+    private func isManageable(_ element: AXUIElement) -> Bool? {
+        guard let subrole: String = element.get(kAXSubroleAttribute) else { return nil }
+        guard subrole == kAXStandardWindowSubrole else { return false }
+        guard let minimized: Bool = element.get(kAXMinimizedAttribute) else { return nil }
+        return !minimized && (element.get("AXFullScreen") as Bool?) != true
     }
 
     private var focusedId: CGWindowID? {
