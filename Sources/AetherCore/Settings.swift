@@ -88,6 +88,7 @@ public struct Settings: Equatable, Sendable {
     public var borderRotationSeconds: Double
     public var floatingApps: Set<String>
     public var reuseWindowApps: Set<String>
+    public var windowRules: [WindowRule]
     /// mode -> binding ("alt-shift-h") -> actions run in order.
     public var modes: [String: [String: [Action]]]
 
@@ -126,6 +127,12 @@ public struct Settings: Equatable, Sendable {
         guard !workspaces.isEmpty else { throw ConfigError(description: "workspaces must not be empty") }
         guard Set(workspaces).count == workspaces.count else { throw ConfigError(description: "workspaces must be unique") }
 
+        let windowRules = try (user.onWindowDetected ?? []).enumerated().map { index, raw in
+            do { return try raw.rule(workspaces: workspaces) } catch let error as ConfigError {
+                throw ConfigError(description: "on-window-detected #\(index + 1): \(error)")
+            }
+        }
+
         let duration = user.animationDuration ?? base.animationDuration!
         let width = user.borderWidth ?? base.borderWidth!
         let radius = user.borderRadius ?? base.borderRadius!
@@ -157,6 +164,7 @@ public struct Settings: Equatable, Sendable {
             borderRotationSeconds: rotation,
             floatingApps: Set(user.floatingApps ?? base.floatingApps!),
             reuseWindowApps: Set(user.reuseWindowApps ?? base.reuseWindowApps!),
+            windowRules: windowRules,
             modes: modes)
     }
 }
@@ -180,10 +188,12 @@ private struct RawConfig: Decodable {
     var borderRotationSeconds: Double?
     var floatingApps: [String]?
     var reuseWindowApps: [String]?
+    var onWindowDetected: [RawRule]?
     var mode: [String: RawMode]?
 
     enum CodingKeys: String, CodingKey {
         case workspaces, mode
+        case onWindowDetected = "on-window-detected"
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
         case workspaceAutoBackAndForth = "workspace-auto-back-and-forth"
@@ -192,6 +202,36 @@ private struct RawConfig: Decodable {
         case borderWidth = "border-width", borderRadius = "border-radius", borderColors = "border-colors"
         case borderRotationSeconds = "border-rotation-seconds"
         case floatingApps = "floating-apps", reuseWindowApps = "reuse-window-apps"
+    }
+}
+
+private struct RawRule: Decodable {
+    var condition: RawCondition?
+    var run: Commands
+    var checkFurtherCallbacks: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case condition = "if", run
+        case checkFurtherCallbacks = "check-further-callbacks"
+    }
+
+    func rule(workspaces: [String]) throws -> WindowRule {
+        try WindowRule(appId: condition?.appId, appNameRegex: condition?.appNameRegex, titleRegex: condition?.titleRegex,
+                       workspace: condition?.workspace,
+                       commands: run.values.map { try parseRuleCommand($0, workspaces: workspaces) },
+                       checkFurtherCallbacks: checkFurtherCallbacks ?? false)
+    }
+}
+
+private struct RawCondition: Decodable {
+    var appId: String?
+    var appNameRegex: String?
+    var titleRegex: String?
+    var workspace: String?
+
+    enum CodingKeys: String, CodingKey {
+        case appId = "app-id", appNameRegex = "app-name-regex-substring"
+        case titleRegex = "window-title-regex-substring", workspace
     }
 }
 
