@@ -53,6 +53,13 @@ reuse-window-apps = ['app.zen-browser.zen']
 #     run = ['layout floating', 'move-node-to-workspace 2']
 #     check-further-callbacks = false
 
+# Per-workspace overrides, like Hyprland's workspace rules. The name must be in workspaces;
+# keys left out use the global value, and a manually chosen layout still wins.
+# [workspace.3]
+#     gaps-inner = 0
+#     gaps-outer = 0
+#     default-layout = 'accordion'
+
 [mode.main.binding]
     alt-slash = 'layout dwindle'
     alt-comma = 'layout accordion'

@@ -293,21 +293,24 @@ final class WindowManager {
     }
 
     private var workArea: CGRect {
-        screenRect.insetBy(dx: config.gapsOuter, dy: config.gapsOuter)
+        let gap = config.gapsOuter(in: currentName)
+        return screenRect.insetBy(dx: gap, dy: gap)
     }
 
     private var tiledFrames: [CGRect] {
         let ids = tiled
         switch currentLayout {
         case .dwindle:
-            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner, ratios: ratios[current] ?? [], defaultRatio: config.dwindleSplitRatio)
+            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), ratios: ratios[current] ?? [], defaultRatio: config.dwindleSplitRatio)
         case .accordion:
             let focused = lastFocus[current].flatMap(ids.firstIndex(of:)) ?? 0
             return accordion(count: ids.count, focused: focused, in: workArea, padding: config.accordionPadding)
         }
     }
 
-    private var currentLayout: Layout { layouts[current] ?? config.defaultLayout }
+    private var currentLayout: Layout { layouts[current] ?? config.defaultLayout(in: currentName) }
+
+    private var currentName: String { config.workspaces[current] }
 
     /// `slide` is -1/+1 when switching workspaces: incoming windows slide in from that side and
     /// outgoing ones leave through the other, Hyprland style, using only position writes.
@@ -423,7 +426,7 @@ final class WindowManager {
     private func resize(by delta: CGFloat) {
         let ids = tiled
         guard currentLayout == .dwindle, let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
-        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner, defaultRatio: config.dwindleSplitRatio)
+        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), defaultRatio: config.dwindleSplitRatio)
         layout()
     }
 
