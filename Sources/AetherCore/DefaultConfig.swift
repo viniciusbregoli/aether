@@ -13,9 +13,13 @@ gaps-inner = 10
 gaps-outer = 10
 accordion-padding = 30
 # Manual and saved workspace layouts override this default.
-default-layout = 'dwindle' # dwindle or accordion
+default-layout = 'dwindle' # dwindle, accordion, master or scrolling
 # First child's fraction; manual and saved split ratios take precedence.
 dwindle-split-ratio = 0.5 # 0.1 to 0.9
+# Master layout: the first window's share of the width; manual and saved resizes take precedence.
+master-ratio = 0.55 # 0.1 to 0.9
+# Scrolling layout: each column's share of the width; manual and saved resizes take precedence.
+scrolling-column-width = 0.5 # 0.1 to 1.0
 # Selecting the current workspace returns to the previous one when enabled.
 workspace-auto-back-and-forth = false
 
