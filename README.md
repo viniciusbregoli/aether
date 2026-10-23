@@ -100,7 +100,7 @@ Appearance and workspace controls retain the existing defaults:
 | `master-ratio` | `0.55` | Master layout: the first window's share of the width, from `0.1` to `0.9`. Saved and manually resized ratios take precedence. |
 | `scrolling-column-width` | `0.5` | Scrolling layout: each column's share of the width, from `0.1` to `1.0`. Saved and manually resized widths take precedence. |
 | `workspace-auto-back-and-forth` | `false` | Selecting the current workspace returns to the previous one. Focus-driven switches are unaffected. |
-| `focus-follows-mouse` | `false` | Moving the pointer over a window of the current workspace focuses it. Only pointer movement triggers it, and menus, the Dock or another app's popup under the pointer block it. |
+| `focus-follows-mouse` | `false` | Moving the pointer over a window focuses it, on any monitor, and makes its workspace the current one. Only pointer movement triggers it, and menus, the Dock or another app's popup under the pointer block it. |
 
 `animation-duration = 0` makes window movement immediate. `animations-enabled = false` also stops border rotation. In-flight animations keep their original timing and curve; disabling motion during reload finishes their moves, including parking outgoing windows. `border-colors` accepts a single color for a solid outline; `border-radius` rounds only the overlay, not the app's window. `dim-inactive` must be between 0 and 1, and the overlay corners use `border-radius`. Duration, width and radius must be finite and nonnegative, rotation seconds must be finite and positive, and the color list must not be empty.
 

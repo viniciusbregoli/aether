@@ -24,7 +24,7 @@ master-ratio = 0.55 # 0.1 to 0.9
 scrolling-column-width = 0.5 # 0.1 to 1.0
 # Selecting the current workspace returns to the previous one when enabled.
 workspace-auto-back-and-forth = false
-# Moving the pointer over a window of the current workspace focuses it.
+# Moving the pointer over a window of a shown workspace focuses it, on any monitor.
 focus-follows-mouse = false
 
 # Movement duration in seconds; 0 places windows immediately.
