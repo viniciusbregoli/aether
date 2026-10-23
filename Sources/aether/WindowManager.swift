@@ -1,19 +1,26 @@
 import AetherCore
 import AppKit
 
-/// Workspaces work like AeroSpace's: they only exist in memory, and windows of hidden workspaces
-/// are parked in the screen's bottom-right corner (macOS keeps a 1px sliver visible).
-// shortcut: single monitor (the menu bar screen) and all AX calls on the main thread with a 0.5s
-// messaging timeout, so a hung app can stall aether briefly. Upgrade to per-monitor workspaces and
-// AeroSpace's per-app AX threads when either starts to hurt.
+/// Workspaces work like AeroSpace's: they only exist in memory, each monitor shows one of them,
+/// and windows of hidden workspaces are parked in a screen corner (macOS keeps a 1px sliver visible).
+// shortcut: all AX calls on the main thread with a 0.5s messaging timeout, so a hung app can stall
+// aether briefly. Upgrade to AeroSpace's per-app AX threads when that starts to hurt.
 final class WindowManager {
     static let shared = WindowManager()
 
     private var windows: [CGWindowID: Window] = [:]
     /// Window order per workspace is the dwindle order.
     private var workspaces = Array(repeating: [CGWindowID](), count: config.workspaces.count)
+    /// The focused workspace, which is always shown on some monitor.
     private var current = 0
     private var previous: Int?
+    /// Monitors left to right, and the workspace each one shows.
+    private var monitors: [Monitor] = []
+    private var shown: [CGDirectDisplayID: Int] = [:]
+    /// Where a workspace was last shown, so its windows park in that monitor's corner.
+    private var lastMonitor: [Int: CGDirectDisplayID] = [:]
+    /// A mouse button went up: the focused window may have been dragged to another monitor.
+    private var dragEnded = false
     private var layouts: [Int: Layout] = [:]
     /// Dwindle split ratios, or a single master ratio or scrolling column width for those layouts.
     private var ratios: [Int: [CGFloat]] = [:]
@@ -86,7 +93,16 @@ final class WindowManager {
         }
         // AeroSpace's backstop: destroy notifications are unreliable, and a mouse-up after the user
         // drags a tiled window should snap it back into place.
-        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in scheduleRefresh() }
+        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in
+            dragEnded = true
+            scheduleRefresh()
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
+                                               queue: .main) { [unowned self] _ in
+            updateMonitors()
+            layout()
+        }
+        updateMonitors()
         pendingRestore = try? JSONDecoder().decode(SavedState.self, from: Data(contentsOf: stateURL))
         refresh(followFocus: false)
     }
@@ -207,11 +223,15 @@ final class WindowManager {
 
         let activated = activatedPid
         activatedPid = nil
+        if dragEnded {
+            dragEnded = false
+            if let focused { adoptDragged(focused) }
+        }
         if followFocus, let focused, !ruleMoved.contains(focused), let ws = workspace(of: focused), ws != current {
             let pid = windows[focused]?.pid
             if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
                 // The app refocused its old window while we wait for the one we asked for: stay here.
-            } else if let pid, pid == activated, !config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
+            } else if let pid, pid == activated, !shown.values.contains(ws), !config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
                !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
                 // for a new window here. Apps that ignore cmd-N fall back to jumping to their window,
@@ -295,76 +315,152 @@ final class WindowManager {
         workspaces.firstIndex { $0.contains(id) }
     }
 
+    /// A window dropped on another monitor joins the workspace shown there, and focus follows it.
+    private func adoptDragged(_ id: CGWindowID) {
+        guard let from = workspace(of: id), shown.values.contains(from), !animator.isAnimating(id),
+              let frame = windows[id]?.frame,
+              let target = monitors.first(where: { $0.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
+              let to = shown[target.id], to != from else { return }
+        workspaces[from].removeAll { $0 == id }
+        workspaces[to].append(id)
+        if lastFocus[from] == id { lastFocus[from] = nil }
+        if current != to {
+            previous = current
+            current = to
+        }
+    }
+
+    // MARK: Monitors
+
+    private func displayId(_ screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// Reads the monitors again and gives each one a workspace. `keep` holds on to what each
+    /// monitor showed; restoring passes the saved assignments as `preferred` instead.
+    private func updateMonitors(preferred: [CGDirectDisplayID: Int] = [:], keep: Bool = true) {
+        let fresh = NSScreen.screens.compactMap { screen in
+            displayId(screen).map { Monitor(id: $0, frame: flip(screen.frame), visible: flip(screen.visibleFrame)) }
+        }.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
+        // Closing the lid can briefly report no screens; keep the old ones until real ones show up.
+        guard !fresh.isEmpty else { return }
+        let ids = fresh.map(\.id)
+        let wasFocused = keep ? shown.first { $0.value == current }?.key : nil
+        let main = NSScreen.screens.first.flatMap(displayId) ?? ids[0]
+        monitors = fresh
+        shown = assignWorkspaces(monitors: ids, kept: keep ? shown : [:], preferred: preferred, focused: current,
+                                 focusedMonitor: wasFocused.flatMap { ids.contains($0) ? $0 : nil } ?? main,
+                                 count: workspaces.count, occupied: Set(workspaces.indices.filter { !workspaces[$0].isEmpty }))
+    }
+
+    private func targetMonitor(_ target: MonitorTarget) -> Int? {
+        guard let focused = focusedMonitor, let index = monitors.firstIndex(where: { $0.id == focused.id }),
+              let next = AetherCore.monitor(target, from: index, in: monitors.map(\.frame)) else { return nil }
+        return shown[monitors[next].id]
+    }
+
     // MARK: Layout
 
-    private var screenRect: CGRect {
-        flip(NSScreen.screens.first?.visibleFrame ?? .zero)
+    private func monitor(showing ws: Int) -> Monitor? {
+        shown.first { $0.value == ws }.flatMap { entry in monitors.first { $0.id == entry.key } }
     }
 
-    private var tiled: [CGWindowID] {
-        workspaces[current].filter { !floating.contains($0) }
+    private var focusedMonitor: Monitor? { monitor(showing: current) ?? monitors.first }
+
+    /// The visible frame of the monitor showing `ws`; hidden workspaces measure on the focused one.
+    private func screen(_ ws: Int) -> CGRect {
+        (monitor(showing: ws) ?? focusedMonitor)?.visible ?? .zero
     }
 
-    private var workArea: CGRect {
-        let gap = config.smartGaps && tiled.count == 1 ? 0 : config.gapsOuter(in: currentName)
-        return screenRect.insetBy(dx: gap, dy: gap)
+    private var screenRect: CGRect { screen(current) }
+
+    private func tiled(in ws: Int) -> [CGWindowID] {
+        workspaces[ws].filter { !floating.contains($0) }
     }
 
-    private var tiledFrames: [CGRect] {
-        let ids = tiled
-        switch currentLayout {
+    private var tiled: [CGWindowID] { tiled(in: current) }
+
+    private func workArea(of ws: Int) -> CGRect {
+        let gap = config.smartGaps && tiled(in: ws).count == 1 ? 0 : config.gapsOuter(in: config.workspaces[ws])
+        return screen(ws).insetBy(dx: gap, dy: gap)
+    }
+
+    private var workArea: CGRect { workArea(of: current) }
+
+    private func tiledFrames(of ws: Int) -> [CGRect] {
+        let ids = tiled(in: ws)
+        let name = config.workspaces[ws]
+        switch layoutKind(of: ws) {
         case .dwindle:
-            return dwindle(count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), ratios: ratios[current] ?? [], defaultRatio: config.dwindleSplitRatio)
+            return dwindle(count: ids.count, in: workArea(of: ws), gap: config.gapsInner(in: name), ratios: ratios[ws] ?? [], defaultRatio: config.dwindleSplitRatio)
         case .accordion:
-            let focused = lastFocus[current].flatMap(ids.firstIndex(of:)) ?? 0
-            return accordion(count: ids.count, focused: focused, in: workArea, padding: config.accordionPadding)
+            let focused = lastFocus[ws].flatMap(ids.firstIndex(of:)) ?? 0
+            return accordion(count: ids.count, focused: focused, in: workArea(of: ws), padding: config.accordionPadding)
         case .master:
-            return master(count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), ratio: ratios[current]?.first ?? config.masterRatio)
+            return master(count: ids.count, in: workArea(of: ws), gap: config.gapsInner(in: name), ratio: ratios[ws]?.first ?? config.masterRatio)
         case .scrolling:
             // The view only moves when the focused column is not fully visible, so the offset is kept
             // between layouts. A focused floating window leaves it alone.
             // shortcut: columns beyond the screen edge get off-screen frames, and macOS may clamp a
             // window that can't be fully off-screen. Upgrade to parking them if that ever shows.
-            let strip = scrolling(count: ids.count, focused: lastFocus[current].flatMap(ids.firstIndex(of:)),
-                                  offset: scrollOffsets[current] ?? 0,
-                                  columnWidth: ratios[current]?.first ?? config.scrollingColumnWidth,
-                                  in: workArea, gap: config.gapsInner(in: currentName))
-            scrollOffsets[current] = strip.offset
+            let strip = scrolling(count: ids.count, focused: lastFocus[ws].flatMap(ids.firstIndex(of:)),
+                                  offset: scrollOffsets[ws] ?? 0,
+                                  columnWidth: ratios[ws]?.first ?? config.scrollingColumnWidth,
+                                  in: workArea(of: ws), gap: config.gapsInner(in: name))
+            scrollOffsets[ws] = strip.offset
             return strip.frames
         }
     }
 
-    private var currentLayout: Layout { layouts[current] ?? config.defaultLayout(in: currentName) }
+    private var tiledFrames: [CGRect] { tiledFrames(of: current) }
+
+    private func layoutKind(of ws: Int) -> Layout { layouts[ws] ?? config.defaultLayout(in: config.workspaces[ws]) }
+
+    private var currentLayout: Layout { layoutKind(of: current) }
 
     private var currentName: String { config.workspaces[current] }
 
-    /// `slide` is -1/+1 when switching workspaces: incoming windows slide in from that side and
-    /// outgoing ones leave through the other, Hyprland style, using only position writes.
+    /// `slide` is -1/+1 when the focused monitor switches workspaces: incoming windows slide in
+    /// from that side and outgoing ones leave through the other, Hyprland style, using only
+    /// position writes. Every monitor lays out the workspace it shows; the rest are parked.
     private func layout(slide: CGFloat = 0) {
-        let screen = screenRect
-        let dx = slide * screen.width
-        for (id, frame) in zip(tiled, tiledFrames) { place(id, fullscreen.contains(id) ? workArea : frame, dx) }
-        for id in workspaces[current] where floating.contains(id) && parked.contains(id) {
-            if let frame = floatingFrames[id] { place(id, frame, dx) }
+        var distance = CGSize.zero
+        if slide != 0, let focused = focusedMonitor {
+            let d = slideDistance(for: focused.visible, others: monitors.filter { $0.id != focused.id }.map(\.frame))
+            distance = CGSize(width: d.width * slide, height: d.height * slide)
+        }
+        for (monitorId, ws) in shown {
+            lastMonitor[ws] = monitorId
+            let offset = ws == current ? distance : .zero
+            let area = workArea(of: ws)
+            for (id, frame) in zip(tiled(in: ws), tiledFrames(of: ws)) { place(id, fullscreen.contains(id) ? area : frame, offset) }
+            for id in workspaces[ws] where floating.contains(id) && parked.contains(id) {
+                if let frame = floatingFrames[id] { place(id, fitted(frame, in: screen(ws)), offset) }
+            }
         }
 
-        let corner = CGPoint(x: screen.maxX - 1, y: screen.maxY - 1)
-        for (i, ws) in workspaces.enumerated() where i != current {
+        let screens = monitors.map(\.visible)
+        for (i, ws) in workspaces.enumerated() where !shown.values.contains(i) {
+            let home = monitors.first { $0.id == lastMonitor[i] } ?? focusedMonitor
             for id in ws {
                 guard let window = windows[id] else { continue }
                 if parked.contains(id) {
-                    if needsParking(origin: window.frame?.origin, corner: corner, isAnimating: animator.isAnimating(id)) {
-                        window.setPosition(corner)
+                    let frame = window.frame
+                    if needsParking(frame: frame, monitors: screens, isAnimating: animator.isAnimating(id)), let frame, let home {
+                        window.setPosition(parkingSpot(for: frame.size, on: home))
                     }
                     continue
                 }
-                if floating.contains(id) { floatingFrames[id] = window.frame }
+                let frame = window.frame
+                if floating.contains(id) { floatingFrames[id] = frame }
                 parked.insert(id)
-                if slide != 0, let frame = window.frame {
-                    animator.animate(window, to: frame.offsetBy(dx: -dx, dy: 0)) { window.setPosition(corner) }
+                guard let home else { continue }
+                let spot = parkingSpot(for: frame?.size ?? .zero, on: home)
+                if distance != .zero, let frame {
+                    animator.animate(window, to: frame.offsetBy(dx: -distance.width, dy: -distance.height)) { window.setPosition(spot) }
                 } else {
                     animator.cancel(id)
-                    window.setPosition(corner)
+                    window.setPosition(spot)
                 }
             }
         }
@@ -374,16 +470,29 @@ final class WindowManager {
         save()
     }
 
+    private func parkingSpot(for size: CGSize, on monitor: Monitor) -> CGPoint {
+        AetherCore.parkingSpot(size: size, monitor: monitor.visible, others: monitors.filter { $0.id != monitor.id }.map(\.frame))
+    }
+
+    /// A floating window keeps its frame on its monitor; on another one it is centered there.
+    private func fitted(_ frame: CGRect, in screen: CGRect) -> CGRect {
+        screen.contains(CGPoint(x: frame.midX, y: frame.midY)) ? frame : CGRect(origin: centered(frame.size, in: screen), size: frame.size)
+    }
+
+    private func centered(_ size: CGSize, in screen: CGRect) -> CGPoint {
+        CGPoint(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2)
+    }
+
     private func updateTray() {
         let occupied = config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { config.workspaces[$0] }
         tray.update(current: config.workspaces[current], occupied: occupied, mode: mode,
                     switchTo: { [unowned self] in execute(.workspace($0)) }, quit: { [unowned self] in execute(.quit) })
     }
 
-    private func place(_ id: CGWindowID, _ frame: CGRect, _ dx: CGFloat) {
+    private func place(_ id: CGWindowID, _ frame: CGRect, _ offset: CGSize) {
         guard let window = windows[id] else { return }
         let wasParked = parked.remove(id) != nil
-        let from = wasParked ? frame.offsetBy(dx: dx, dy: 0) : nil
+        let from = wasParked ? frame.offsetBy(dx: offset.width, dy: offset.height) : nil
         if let from { reportedFrames[id] = from }
         animator.animate(window, from: from, to: frame)
     }
@@ -402,7 +511,7 @@ final class WindowManager {
     private func updateDim() {
         guard config.dimInactive > 0, !isScreenLocked else { return dimmer.hideAll() }
         var frames: [CGWindowID: CGRect] = [:]
-        for id in dimTargets(in: workspaces[current], focused: borderTarget, parked: parked) {
+        for id in dimTargets(in: shown.values.flatMap { workspaces[$0] }, focused: borderTarget, parked: parked) {
             let frame = animator.isAnimating(id) ? reportedFrames[id] : windows[id]?.frame
             if let frame { frames[id] = frame }
         }
@@ -419,6 +528,8 @@ final class WindowManager {
                                              autoBackAndForth: config.workspaceAutoBackAndForth))
             }
         case .moveToWorkspace(let name): config.workspaces.firstIndex(of: name).map(moveFocused(to:))
+        case .focusMonitor(let target): targetMonitor(target).map { switchTo($0) }
+        case .moveToMonitor(let target): targetMonitor(target).map(moveFocused(to:))
         case .move(let direction): swap(direction)
         case .resize(let delta): resize(by: delta)
         case .layout(let layout):
@@ -531,12 +642,16 @@ final class WindowManager {
         }
     }
 
+    /// A workspace shown on another monitor just takes focus there; a hidden one replaces the
+    /// focused monitor's workspace.
     private func switchTo(_ ws: Int, focusing target: CGWindowID? = nil) {
         guard ws != current, workspaces.indices.contains(ws) else { return }
         let slide: CGFloat = ws > current ? 1 : -1
+        let visible = shown.values.contains(ws)
+        if !visible, let monitor = focusedMonitor { shown[monitor.id] = ws }
         previous = current
         current = ws
-        layout(slide: slide)
+        layout(slide: visible ? 0 : slide)
         focus(windowToFocus(in: workspaces[ws], preferred: target, remembered: lastFocus[ws]))
     }
 
@@ -571,20 +686,19 @@ final class WindowManager {
 
     /// Bring every parked window back on screen so nothing is stranded in the corner after we exit.
     func restoreAll() {
-        let screen = screenRect
         for id in parked {
-            guard let window = windows[id], let frame = window.frame else { continue }
-            if let saved = floatingFrames[id] {
-                window.setPosition(saved.origin)
-            } else {
-                window.setPosition(CGPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
-            }
+            guard let window = windows[id], let frame = window.frame, let ws = workspace(of: id) else { continue }
+            let screen = (monitors.first { $0.id == lastMonitor[ws] } ?? focusedMonitor)?.visible ?? screenRect
+            window.setPosition(floatingFrames[id].map { fitted($0, in: screen).origin } ?? centered(frame.size, in: screen))
         }
         parked.removeAll()
-        // Scrolling can leave columns of the current workspace off screen too.
-        for id in workspaces[current] {
-            guard let window = windows[id], let frame = window.frame, !screen.contains(frame.origin) else { continue }
-            window.setPosition(CGPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
+        // Scrolling can leave columns of shown workspaces off screen too.
+        for ws in shown.values {
+            let screen = screen(ws)
+            for id in workspaces[ws] {
+                guard let window = windows[id], let frame = window.frame, !screen.contains(frame.origin) else { continue }
+                window.setPosition(centered(frame.size, in: screen))
+            }
         }
     }
 
@@ -623,7 +737,8 @@ final class WindowManager {
     private func save() {
         guard pendingRestore == nil else { return }
         let names = config.workspaces
-        var state = SavedState(current: names[current], workspaces: [:], layouts: [:], ratios: [:])
+        var state = SavedState(current: names[current], workspaces: [:], layouts: [:], ratios: [:],
+                               monitors: Dictionary(uniqueKeysWithValues: shown.map { (String($0.key), names[$0.value]) }))
         for (i, ids) in workspaces.enumerated() where !ids.isEmpty {
             state.workspaces[names[i]] = ids.compactMap { id in
                 windows[id].map { SavedWindow(key: $0.key, floating: floating.contains(id), fullscreen: fullscreen.contains(id)) }
@@ -667,6 +782,11 @@ final class WindowManager {
             for (name, layout) in state.layouts { names.firstIndex(of: name).map { layouts[$0] = layout } }
             for (name, r) in state.ratios { names.firstIndex(of: name).map { ratios[$0] = r } }
             current = names.firstIndex(of: state.current) ?? 0
+            var preferred: [CGDirectDisplayID: Int] = [:]
+            for (display, name) in state.monitors ?? [:] {
+                if let id = CGDirectDisplayID(display), let ws = names.firstIndex(of: name) { preferred[id] = ws }
+            }
+            updateMonitors(preferred: preferred, keep: false)
         }
         restoreWaiting = deferred.map { waiting[$0] }
         restoreWaitingApps = Set(deferred.map { entries[waiting[$0]].1.key.bundleId })
@@ -679,6 +799,15 @@ private struct SavedState: Codable {
     var workspaces: [String: [SavedWindow]]
     var layouts: [String: Layout]
     var ratios: [String: [CGFloat]]
+    /// Display id -> the workspace it showed; missing in state saved before multi-monitor support.
+    var monitors: [String: String]?
+}
+
+/// A screen in AX (top-left origin) coordinates.
+private struct Monitor {
+    let id: CGDirectDisplayID
+    let frame: CGRect
+    let visible: CGRect
 }
 
 private struct SavedWindow: Codable {

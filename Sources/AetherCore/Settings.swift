@@ -9,6 +9,8 @@ public enum Layout: String, Codable, Sendable {
 public enum Action: Equatable, Sendable {
     case workspace(String)
     case moveToWorkspace(String)
+    case focusMonitor(MonitorTarget)
+    case moveToMonitor(MonitorTarget)
     case move(Direction)
     case resize(CGFloat)
     case layout(Layout)
@@ -27,6 +29,9 @@ public struct ConfigError: Error, CustomStringConvertible {
     public let description: String
 }
 
+private let directions: [String: Direction] = ["left": .left, "right": .right, "up": .up, "down": .down]
+private let monitorTargets = directions.mapValues(MonitorTarget.direction).merging(["next": .next, "prev": .prev]) { $1 }
+
 /// Parses one binding command. AeroSpace's spellings are accepted too, so bindings can be
 /// copied from ~/.aerospace.toml as-is.
 public func parseCommand(_ command: String) -> Action? {
@@ -37,8 +42,12 @@ public func parseCommand(_ command: String) -> Action? {
     case ("workspace", 1): return .workspace(args[0])
     case ("move-node-to-workspace", 1): return .moveToWorkspace(args[0])
     case ("move", 1):
-        let directions: [String: Direction] = ["left": .left, "right": .right, "up": .up, "down": .down]
         return directions[args[0]].map(Action.move)
+    case ("focus-monitor", 1...), ("move-node-to-monitor", 1...):
+        // AeroSpace's --wrap-around is accepted; next and prev always wrap.
+        let names = args.filter { $0 != "--wrap-around" }
+        guard names.count == 1, let target = monitorTargets[names[0]] else { return nil }
+        return name == "focus-monitor" ? .focusMonitor(target) : .moveToMonitor(target)
     case ("resize", 1...2):
         // `resize smart -50` in AeroSpace; aether always resizes along the window's split.
         return Double(args.last!).map { .resize(CGFloat($0)) }
