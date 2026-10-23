@@ -81,6 +81,25 @@ import Testing
     }
 }
 
+@Test func dimmingIsOffByDefaultAndParsesItsKeys() throws {
+    let defaults = try Settings.parse(defaultConfig)
+    #expect(defaults.dimInactive == 0)
+    #expect(defaults.dimColor == [0, 0, 0, 1])
+    let settings = try Settings.parse("dim-inactive = 0.35\ndim-color = '#102030'")
+    #expect(settings.dimInactive == 0.35)
+    #expect(settings.dimColor == [0x10, 0x20, 0x30, 0xFF].map { CGFloat($0) / 255 })
+    for value in [0.0, 1.0] {
+        #expect(try Settings.parse("dim-inactive = \(value)").dimInactive == CGFloat(value))
+    }
+}
+
+@Test(arguments: [
+    "dim-inactive = -0.1", "dim-inactive = 1.1", "dim-inactive = nan", "dim-inactive = inf",
+    "dim-color = 'gray'", "dim-color = '#fff'",
+]) func invalidDimValuesAreReported(_ toml: String) {
+    #expect(throws: ConfigError.self) { try Settings.parse(toml) }
+}
+
 @Test(arguments: [
     "animation-duration = -0.1", "animation-duration = inf", "animation-duration = nan",
     "animation-curve = 'spring'", "default-layout = 'spiral'",
