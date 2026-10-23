@@ -19,6 +19,8 @@ final class WindowManager {
     private var shown: [CGDirectDisplayID: Int] = [:]
     /// Where a workspace was last shown, so its windows park in that monitor's corner.
     private var lastMonitor: [Int: CGDirectDisplayID] = [:]
+    /// What a monitor last showed, so one that comes back (after sleep, say) shows it again.
+    private var lastShown: [CGDirectDisplayID: Int] = [:]
     /// A mouse button went up: the focused window may have been dragged to another monitor.
     private var dragEnded = false
     private var layouts: [Int: Layout] = [:]
@@ -100,7 +102,8 @@ final class WindowManager {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
                                                queue: .main) { [unowned self] _ in
             updateMonitors()
-            layout()
+            // Unlocking refreshes, which lays out on the monitors found here.
+            if !isScreenLocked { layout() }
         }
         updateMonitors()
         pendingRestore = try? JSONDecoder().decode(SavedState.self, from: Data(contentsOf: stateURL))
@@ -337,18 +340,26 @@ final class WindowManager {
     }
 
     /// Reads the monitors again and gives each one a workspace. `keep` holds on to what each
-    /// monitor showed; restoring passes the saved assignments as `preferred` instead.
-    private func updateMonitors(preferred: [CGDirectDisplayID: Int] = [:], keep: Bool = true) {
+    /// monitor showed and gives returning monitors what they showed last; restoring passes the
+    /// saved assignments as `preferred` instead.
+    private func updateMonitors(preferred: [CGDirectDisplayID: Int]? = nil, keep: Bool = true) {
         let fresh = NSScreen.screens.compactMap { screen in
             displayId(screen).map { Monitor(id: $0, frame: flip(screen.frame), visible: flip(screen.visibleFrame)) }
         }.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         // Closing the lid can briefly report no screens; keep the old ones until real ones show up.
         guard !fresh.isEmpty else { return }
         let ids = fresh.map(\.id)
-        let wasFocused = keep ? shown.first { $0.value == current }?.key : nil
         let main = NSScreen.screens.first.flatMap(displayId) ?? ids[0]
+        let kept = keep ? shown.filter { ids.contains($0.key) } : [:]
+        let wasFocused = keep ? shown.first { $0.value == current }?.key : nil
+        if let wasFocused, !ids.contains(wasFocused), let ws = kept[main] ?? kept.values.first {
+            // The focused monitor went away: focus moves to one that is left, and the workspace it
+            // showed stays hidden until it comes back.
+            previous = current
+            current = ws
+        }
         monitors = fresh
-        shown = assignWorkspaces(monitors: ids, kept: keep ? shown : [:], preferred: preferred, focused: current,
+        shown = assignWorkspaces(monitors: ids, kept: kept, preferred: preferred ?? lastShown, focused: current,
                                  focusedMonitor: wasFocused.flatMap { ids.contains($0) ? $0 : nil } ?? main,
                                  count: workspaces.count, occupied: Set(workspaces.indices.filter { !workspaces[$0].isEmpty }))
     }
@@ -431,6 +442,7 @@ final class WindowManager {
         }
         for (monitorId, ws) in shown {
             lastMonitor[ws] = monitorId
+            lastShown[monitorId] = ws
             let offset = ws == current ? distance : .zero
             let area = workArea(of: ws)
             for (id, frame) in zip(tiled(in: ws), tiledFrames(of: ws)) { place(id, fullscreen.contains(id) ? area : frame, offset) }
