@@ -51,6 +51,8 @@ final class Server {
     private func serve(_ client: Int32) {
         let request = receive(client, limit: maxRequestBytes) { $0.contains(UInt8(ascii: "\n")) }
         guard request.count < maxRequestBytes else { return finish(client, code: 1, "request too large\n") }
+        // A timed-out partial line could be a truncated `exec-and-forget` command, so never run it.
+        guard request.contains(UInt8(ascii: "\n")) else { return finish(client, code: 1, "incomplete request\n") }
         let line = String(decoding: request.prefix { $0 != UInt8(ascii: "\n") }, as: UTF8.self)
             .trimmingCharacters(in: .whitespaces)
 
