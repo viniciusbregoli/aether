@@ -197,6 +197,16 @@ import Testing
     #expect(parseCommand("") == nil)
 }
 
+@Test func parsesMonitorCommands() {
+    #expect(parseCommand("focus-monitor left") == .focusMonitor(.direction(.left)))
+    #expect(parseCommand("focus-monitor --wrap-around next") == .focusMonitor(.next))
+    #expect(parseCommand("move-node-to-monitor prev") == .moveToMonitor(.prev))
+    #expect(parseCommand("move-node-to-monitor down") == .moveToMonitor(.direction(.down)))
+    #expect(parseCommand("focus-monitor sideways") == nil)
+    #expect(parseCommand("focus-monitor --wrap-around") == nil)
+    #expect(parseCommand("focus-monitor left right") == nil)
+}
+
 @Test func parsesHexColors() {
     #expect(parseHexColor("#ff0000") == [1, 0, 0, 1])
     #expect(parseHexColor("00ff0080")?[3] == CGFloat(0x80) / 255)
