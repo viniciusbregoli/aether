@@ -30,6 +30,11 @@ final class WindowManager {
     private var pendingNewWindow: (pid: pid_t, workspace: Int)?
     private var mode = "main"
     private var pendingRestore: SavedState?
+    /// Saved entries (indices into the saved list) still waiting on apps that haven't answered.
+    private var restoreWaiting: [Int]?
+    private var restoreWaitingApps: Set<String> = []
+    private var restoreRank: [CGWindowID: Int] = [:]
+    private var restoreAttempts = 0
     private var lastSaved: Data?
     private let animator = Animator()
     private let border = Border()
@@ -115,7 +120,7 @@ final class WindowManager {
         guard !isScreenLocked else { return }
         var alive: [CGWindowID: Window] = [:]
         var running: Set<pid_t> = []
-        var discoveryComplete = true
+        var incompleteApps: Set<String> = []
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != getpid() {
             let pid = app.processIdentifier
@@ -140,15 +145,10 @@ final class WindowManager {
             let snapshot = reconcileWindowSnapshot(previous: windows.filter { $0.value.pid == pid },
                                                    discovered: discovered, isComplete: complete, excluding: excluded)
             alive.merge(snapshot) { _, fresh in fresh }
-            discoveryComplete = discoveryComplete && complete
+            if !complete { incompleteApps.insert(app.bundleIdentifier ?? "") }
         }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
-        if pendingRestore != nil && !discoveryComplete {
-            // Matching a partial startup scan would consume the saved assignments of missing windows.
-            scheduleRefresh(after: 0.5)
-            return
-        }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -159,12 +159,21 @@ final class WindowManager {
         for id in gone { animator.cancel(id) }
 
         if let saved = pendingRestore {
-            pendingRestore = nil
-            restore(saved, from: alive)
+            restoreAttempts += 1
+            // Restore what's readable now. Apps that never answer stop being waited on after ~10s.
+            if restore(saved, from: alive, deferring: restoreAttempts < 20 ? incompleteApps : []) {
+                scheduleRefresh(after: 0.5)
+            } else {
+                pendingRestore = nil
+                restoreWaiting = nil
+                restoreWaitingApps = []
+                restoreRank = [:]
+            }
         }
 
         let focused = focusedId
-        for id in alive.keys.sorted() where windows[id] == nil && workspace(of: id) == nil {
+        // Windows of an app still being restored wait for their saved slot instead of landing here.
+        for id in alive.keys.sorted() where workspace(of: id) == nil && !restoreWaitingApps.contains(alive[id]!.bundleId) {
             // Like Hyprland's dwindle, a new window goes right after the focused one.
             let ws = workspaces[current]
             let index = focused.flatMap(ws.firstIndex(of:)).map { $0 + 1 } ?? ws.count
@@ -507,25 +516,40 @@ final class WindowManager {
         try? data.write(to: stateURL, options: .atomic)
     }
 
-    private func restore(_ state: SavedState, from alive: [CGWindowID: Window]) {
+    /// Places the saved windows that can be matched now. Returns true while some saved windows are
+    /// still waiting on apps whose scan was incomplete.
+    private func restore(_ state: SavedState, from alive: [CGWindowID: Window], deferring incompleteApps: Set<String>) -> Bool {
         let names = config.workspaces
         let entries = names.flatMap { name in (state.workspaces[name] ?? []).map { (name, $0) } }
-        let live = alive.keys.sorted().compactMap { alive[$0]?.key }
-        for (i, id) in match(saved: entries.map(\.1.key), alive: live) {
-            let (name, saved) = entries[i]
+        let first = restoreWaiting == nil
+        let waiting = restoreWaiting ?? Array(entries.indices)
+        let placed = Set(workspaces.joined())
+        let live = alive.keys.sorted().filter { !placed.contains($0) }.compactMap { alive[$0]?.key }
+        let (matched, deferred) = matchIncrementally(saved: waiting.map { entries[$0].1.key }, alive: live, deferring: incompleteApps)
+        var touched: Set<Int> = []
+        for (k, id) in matched {
+            let (name, saved) = entries[waiting[k]]
             guard let ws = names.firstIndex(of: name) else { continue }
             workspaces[ws].append(id)
+            restoreRank[id] = waiting[k]
+            touched.insert(ws)
             if saved.floating { floating.insert(id) }
             if saved.fullscreen { fullscreen.insert(id) }
         }
-        // match() returns a dictionary, so restore each workspace's saved order.
-        for ws in workspaces.indices {
-            let order = (state.workspaces[names[ws]] ?? []).map(\.key.id)
-            workspaces[ws].sort { (order.firstIndex(of: $0) ?? .max, $0) < (order.firstIndex(of: $1) ?? .max, $1) }
+        // Back in saved order; windows that arrived meanwhile keep their order after them.
+        for ws in touched {
+            workspaces[ws] = workspaces[ws].enumerated()
+                .sorted { (restoreRank[$0.element] ?? .max, $0.offset) < (restoreRank[$1.element] ?? .max, $1.offset) }
+                .map(\.element)
         }
-        for (name, layout) in state.layouts { names.firstIndex(of: name).map { layouts[$0] = layout } }
-        for (name, r) in state.ratios { names.firstIndex(of: name).map { ratios[$0] = r } }
-        current = names.firstIndex(of: state.current) ?? 0
+        if first {
+            for (name, layout) in state.layouts { names.firstIndex(of: name).map { layouts[$0] = layout } }
+            for (name, r) in state.ratios { names.firstIndex(of: name).map { ratios[$0] = r } }
+            current = names.firstIndex(of: state.current) ?? 0
+        }
+        restoreWaiting = deferred.map { waiting[$0] }
+        restoreWaitingApps = Set(deferred.map { entries[waiting[$0]].1.key.bundleId })
+        return !deferred.isEmpty
     }
 }
 
