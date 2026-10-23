@@ -97,6 +97,8 @@ public struct Settings: Equatable, Sendable {
     public var borderRadius: CGFloat
     public var borderColors: [[CGFloat]]
     public var borderRotationSeconds: Double
+    public var dimInactive: CGFloat
+    public var dimColor: [CGFloat]
     public var floatingApps: Set<String>
     public var reuseWindowApps: Set<String>
     public var windowRules: [WindowRule]
@@ -177,6 +179,11 @@ public struct Settings: Equatable, Sendable {
         guard columnWidth.isFinite, (0.1...1).contains(columnWidth) else { throw ConfigError(description: "scrolling-column-width must be between 0.1 and 1.0") }
         guard !parsedColors.isEmpty else { throw ConfigError(description: "border-colors must not be empty") }
 
+        let dim = user.dimInactive ?? base.dimInactive!
+        guard dim.isFinite, (0...1).contains(dim) else { throw ConfigError(description: "dim-inactive must be between 0 and 1") }
+        let dimHex = user.dimColor ?? base.dimColor!
+        guard let dimColor = parseHexColor(dimHex) else { throw ConfigError(description: "bad color '\(dimHex)', use #rrggbb or #rrggbbaa") }
+
         return Settings(
             workspaces: workspaces,
             gapsInner: CGFloat(user.gapsInner ?? base.gapsInner!),
@@ -196,6 +203,8 @@ public struct Settings: Equatable, Sendable {
             borderRadius: CGFloat(radius),
             borderColors: parsedColors,
             borderRotationSeconds: rotation,
+            dimInactive: CGFloat(dim),
+            dimColor: dimColor,
             floatingApps: Set(user.floatingApps ?? base.floatingApps!),
             reuseWindowApps: Set(user.reuseWindowApps ?? base.reuseWindowApps!),
             windowRules: windowRules,
@@ -223,6 +232,8 @@ private struct RawConfig: Decodable {
     var borderRadius: Double?
     var borderColors: [String]?
     var borderRotationSeconds: Double?
+    var dimInactive: Double?
+    var dimColor: String?
     var floatingApps: [String]?
     var reuseWindowApps: [String]?
     var onWindowDetected: [RawRule]?
@@ -240,6 +251,7 @@ private struct RawConfig: Decodable {
         case borderEnabled = "border-enabled", borderAnimationEnabled = "border-animation-enabled"
         case borderWidth = "border-width", borderRadius = "border-radius", borderColors = "border-colors"
         case borderRotationSeconds = "border-rotation-seconds"
+        case dimInactive = "dim-inactive", dimColor = "dim-color"
         case floatingApps = "floating-apps", reuseWindowApps = "reuse-window-apps"
     }
 }

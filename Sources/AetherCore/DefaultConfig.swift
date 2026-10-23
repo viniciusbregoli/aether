@@ -37,6 +37,10 @@ border-colors = ['#64d2ff', '#bf5af2', '#64d2ff']
 border-animation-enabled = true # false leaves the gradient static.
 border-rotation-seconds = 6
 
+# Covers every visible window except the focused one with a translucent layer of dim-color.
+dim-inactive = 0.0 # 0 is off; 0.0 to 1.0 is the layer's opacity.
+dim-color = '#000000' # #rrggbb or #rrggbbaa
+
 # Bundle ids of apps whose windows float instead of tiling.
 floating-apps = ['com.apple.finder', 'com.apple.QuickTimePlayerX', 'com.TablePro']
 
