@@ -133,13 +133,6 @@ public func easeOutCubic(_ t: Double) -> Double {
     return 1 - p * p * p
 }
 
-/// WindowServer can move a parked window back onscreen while its workspace stays inactive.
-public func needsParking(origin: CGPoint?, corner: CGPoint, isAnimating: Bool) -> Bool {
-    guard !isAnimating, let origin else { return false }
-    // Apps may clamp the other coordinate to keep their title bar vertically onscreen.
-    return origin.x < corner.x - 1 && origin.y < corner.y - 1
-}
-
 public enum AnimationCurve: String, Codable, CaseIterable, Sendable {
     case linear
     case easeOutCubic = "ease-out-cubic"
