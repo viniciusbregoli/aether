@@ -87,12 +87,12 @@ final class WindowManager {
         }
     }
 
-    private func scheduleRefresh(followFocus: Bool = false) {
+    private func scheduleRefresh(followFocus: Bool = false, after delay: TimeInterval = 0.05) {
         followFocusOnRefresh = followFocusOnRefresh || followFocus
         guard !refreshScheduled else { return }
         refreshScheduled = true
         // A short delay lets new windows finish setting their subrole before we classify them.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
             refreshScheduled = false
             let follow = followFocusOnRefresh
             followFocusOnRefresh = false
@@ -115,6 +115,7 @@ final class WindowManager {
         guard !isScreenLocked else { return }
         var alive: [CGWindowID: Window] = [:]
         var running: Set<pid_t> = []
+        var discoveryComplete = true
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != getpid() {
             let pid = app.processIdentifier
@@ -123,21 +124,31 @@ final class WindowManager {
             observe(pid, axApp)
             let elements: [AXUIElement]? = axApp.get(kAXWindowsAttribute)
             var discovered: [CGWindowID: Window] = [:]
+            var excluded: Set<CGWindowID> = []
             var complete = elements != nil
             for element in elements ?? [] {
                 guard let id = element.windowId, let manageable = isManageable(element) else {
                     complete = false
                     continue
                 }
-                guard manageable else { continue }
+                guard manageable else {
+                    excluded.insert(id)
+                    continue
+                }
                 discovered[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
             }
             let snapshot = reconcileWindowSnapshot(previous: windows.filter { $0.value.pid == pid },
-                                                   discovered: discovered, isComplete: complete)
+                                                   discovered: discovered, isComplete: complete, excluding: excluded)
             alive.merge(snapshot) { _, fresh in fresh }
+            discoveryComplete = discoveryComplete && complete
         }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
+        if pendingRestore != nil && !discoveryComplete {
+            // Matching a partial startup scan would consume the saved assignments of missing windows.
+            scheduleRefresh(after: 0.5)
+            return
+        }
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -221,7 +232,7 @@ final class WindowManager {
     private func isManageable(_ element: AXUIElement) -> Bool? {
         guard let subrole: String = element.get(kAXSubroleAttribute) else { return nil }
         guard subrole == kAXStandardWindowSubrole else { return false }
-        guard let minimized: Bool = element.get(kAXMinimizedAttribute) else { return nil }
+        guard let minimized: Bool = element.get(kAXMinimizedAttribute, ifUnsupported: false) else { return nil }
         return !minimized && (element.get("AXFullScreen") as Bool?) != true
     }
 

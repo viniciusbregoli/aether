@@ -100,6 +100,15 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(reconcileWindowSnapshot(previous: windows, discovered: [:], isComplete: true).isEmpty)
 }
 
+@Test func partialSnapshotsRemoveKnownUnmanageableWindows() {
+    let previous: [UInt32: String] = [1: "visible", 2: "minimized", 3: "unreadable"]
+    let discovered: [UInt32: String] = [1: "updated", 4: "new"]
+    #expect(reconcileWindowSnapshot(previous: previous, discovered: discovered, isComplete: false, excluding: [2])
+            == [1: "updated", 3: "unreadable", 4: "new"])
+    #expect(reconcileWindowSnapshot(previous: previous, discovered: discovered, isComplete: true, excluding: [2])
+            == discovered)
+}
+
 @Test func easingPresetsAreClampedMonotonicAndDistinct() {
     for curve in AnimationCurve.allCases {
         #expect(curve.value(at: -1) == 0)

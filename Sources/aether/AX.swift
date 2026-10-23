@@ -16,9 +16,11 @@ var isScreenLocked: Bool {
 }
 
 extension AXUIElement {
-    func get<T>(_ attribute: String) -> T? {
+    func get<T>(_ attribute: String, ifUnsupported fallback: T? = nil) -> T? {
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(self, attribute as CFString, &value) == .success else { return nil }
+        let result = AXUIElementCopyAttributeValue(self, attribute as CFString, &value)
+        if result == .attributeUnsupported { return fallback }
+        guard result == .success else { return nil }
         return value as? T
     }
 
