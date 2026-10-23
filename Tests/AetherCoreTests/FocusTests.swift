@@ -32,3 +32,15 @@ import Testing
     #expect(workspaceToActivate(requested: 1, current: 1, previous: 0, autoBackAndForth: false) == 1)
     #expect(workspaceToActivate(requested: 2, current: 1, previous: 0, autoBackAndForth: true) == 2)
 }
+
+@Test func dimsVisibleWindowsExceptTheFocusedOne() {
+    #expect(dimTargets(in: [1, 2, 3], focused: 2, parked: []) == [1, 3])
+    #expect(dimTargets(in: [1, 2, 3], focused: 2, parked: [3]) == [1])
+    #expect(dimTargets(in: [1], focused: 1, parked: []) == [])
+}
+
+@Test func dimsNothingWhileFocusIsOutsideTheWorkspace() {
+    #expect(dimTargets(in: [1, 2], focused: nil, parked: []) == [])
+    #expect(dimTargets(in: [1, 2], focused: 9, parked: []) == [])
+    #expect(dimTargets(in: [], focused: 1, parked: []) == [])
+}

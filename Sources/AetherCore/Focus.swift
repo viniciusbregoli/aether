@@ -10,3 +10,11 @@ public func workspaceToActivate(requested: Int, current: Int, previous: Int?, au
     if autoBackAndForth, requested == current { return previous ?? current }
     return requested
 }
+
+/// Windows that get a dimming overlay: the visible ones of the workspace except the focused one.
+/// Nothing is dimmed while focus is outside the workspace (a dialog, another app), so a window is
+/// never dimmed just because its own popup took focus.
+public func dimTargets(in workspace: [UInt32], focused: UInt32?, parked: Set<UInt32>) -> [UInt32] {
+    guard let focused, workspace.contains(focused) else { return [] }
+    return workspace.filter { $0 != focused && !parked.contains($0) }
+}
