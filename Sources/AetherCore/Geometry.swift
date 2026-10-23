@@ -46,10 +46,12 @@ public func master(count: Int, in rect: CGRect, gap: CGFloat, ratio: CGFloat) ->
     if count == 1 { return [rect] }
     let width = (rect.width - gap) * ratio
     let stackX = rect.minX + width + gap
-    let height = (rect.height - gap * CGFloat(count - 2)) / CGFloat(count - 1)
+    // A gap larger than the stack can hold would give negative heights, so shrink it to fit.
+    let stackGap = count > 2 ? min(gap, rect.height / CGFloat(count - 2)) : gap
+    let height = max(0, (rect.height - stackGap * CGFloat(count - 2)) / CGFloat(count - 1))
     return [CGRect(x: rect.minX, y: rect.minY, width: width, height: rect.height)]
         + (0..<count - 1).map { i in
-            CGRect(x: stackX, y: rect.minY + CGFloat(i) * (height + gap), width: rect.maxX - stackX, height: height)
+            CGRect(x: stackX, y: rect.minY + CGFloat(i) * (height + stackGap), width: rect.maxX - stackX, height: height)
         }
 }
 
