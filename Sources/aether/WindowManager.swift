@@ -400,8 +400,36 @@ final class WindowManager {
         case .closeAllButCurrent: closeAllButFocused()
         case .reload: reloadConfig()
         case .quit:
+            Server.shared.stop()
             restoreAll()
             exit(0)
+        }
+    }
+
+    /// Answers a command line query, or nil when it names a workspace that doesn't exist.
+    func answer(_ query: Query) -> String? {
+        let names = config.workspaces
+        switch query {
+        case .workspaces: return lines(names)
+        case .focusedWorkspace: return lines([names[current]])
+        case .occupiedWorkspaces:
+            return lines(names.indices.filter { $0 == current || !workspaces[$0].isEmpty }.map { names[$0] })
+        case .windows: return lines(names.indices.flatMap(windowLines(in:)))
+        case .focusedWindows: return lines(windowLines(in: current))
+        case .windowsIn(let name): return names.firstIndex(of: name).map { lines(windowLines(in: $0)) }
+        }
+    }
+
+    private func lines(_ items: [String]) -> String {
+        items.map { $0 + "\n" }.joined()
+    }
+
+    private func windowLines(in workspace: Int) -> [String] {
+        workspaces[workspace].compactMap { id in
+            guard let window = windows[id] else { return nil }
+            let app = NSRunningApplication(processIdentifier: window.pid)?.localizedName ?? window.bundleId
+            let title: String = window.ax.get(kAXTitleAttribute) ?? ""
+            return "\(id) | \(config.workspaces[workspace]) | \(app) | \(title.replacingOccurrences(of: "\n", with: " "))"
         }
     }
 

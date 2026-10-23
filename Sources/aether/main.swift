@@ -6,6 +6,11 @@ guard AXIsProcessTrustedWithOptions(options) else {
     exit(1)
 }
 
+if let problem = Server.shared.start() {
+    print("aether: \(problem)")
+    exit(1)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
