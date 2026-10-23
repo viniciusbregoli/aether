@@ -90,6 +90,8 @@ Appearance and workspace controls retain the existing defaults:
 | `animation-curve` | `'ease-out-cubic'` | Also accepts `'linear'` and `'ease-in-out-cubic'`. |
 | `border-enabled` | `true` | Show the focused-window outline. Width zero also hides it. |
 | `border-animation-enabled` | `true` | Rotate the gradient; false keeps it static. |
+| `smart-border` | `false` | Hide the border while the focused window is the only tiled window of its workspace. Floating windows still get it. |
+| `smart-gaps` | `false` | Drop the outer gaps while a workspace has a single tiled window, so it fills the screen. Floating windows don't count. |
 | `dim-inactive` | `0.0` | Opacity from `0.0` to `1.0` of a layer covering every visible window except the focused one. `0` turns dimming off. |
 | `dim-color` | `'#000000'` | Color of that layer, `#rrggbb` or `#rrggbbaa` (the alpha multiplies `dim-inactive`). |
 | `default-layout` | `'dwindle'` | Also accepts `'accordion'`, `'master'` and `'scrolling'`. Manual and saved workspace layouts take precedence; reset-layout returns to this default. |
