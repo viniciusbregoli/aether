@@ -40,10 +40,11 @@ public struct ScreenWindow: Equatable, Sendable {
 
 /// Focus follows mouse: the window to focus when the pointer is at `point`. Only the frontmost
 /// window under it counts, so a menu, the Dock or an unmanaged window on top blocks the switch.
-/// aether's own overlays and invisible windows are looked through.
+/// aether's own overlays (its layer-0 windows) and invisible windows are looked through; its
+/// menu bar menu is on another layer, so it blocks like any menu.
 public func windowUnderPointer(_ point: CGPoint, in stack: [ScreenWindow], ownPid: Int32,
                                focusable: Set<UInt32>, focused: UInt32?) -> UInt32? {
-    guard let top = stack.first(where: { $0.pid != ownPid && $0.alpha > 0 && $0.bounds.contains(point) }),
+    guard let top = stack.first(where: { !($0.pid == ownPid && $0.layer == 0) && $0.alpha > 0 && $0.bounds.contains(point) }),
           top.layer == 0, focusable.contains(top.id), top.id != focused else { return nil }
     return top.id
 }
