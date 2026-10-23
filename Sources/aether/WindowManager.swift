@@ -15,7 +15,9 @@ final class WindowManager {
     private var current = 0
     private var previous: Int?
     private var layouts: [Int: Layout] = [:]
+    /// Dwindle split ratios, or a single master ratio or scrolling column width for those layouts.
     private var ratios: [Int: [CGFloat]] = [:]
+    private var scrollOffsets: [Int: CGFloat] = [:]
     private var fullscreen: Set<CGWindowID> = []
     private var floating: Set<CGWindowID> = []
     private var parked: Set<CGWindowID> = []
@@ -305,6 +307,19 @@ final class WindowManager {
         case .accordion:
             let focused = lastFocus[current].flatMap(ids.firstIndex(of:)) ?? 0
             return accordion(count: ids.count, focused: focused, in: workArea, padding: config.accordionPadding)
+        case .master:
+            return master(count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), ratio: ratios[current]?.first ?? config.masterRatio)
+        case .scrolling:
+            // The view only moves when the focused column is not fully visible, so the offset is kept
+            // between layouts. A focused floating window leaves it alone.
+            // shortcut: columns beyond the screen edge get off-screen frames, and macOS may clamp a
+            // window that can't be fully off-screen. Upgrade to parking them if that ever shows.
+            let strip = scrolling(count: ids.count, focused: lastFocus[current].flatMap(ids.firstIndex(of:)),
+                                  offset: scrollOffsets[current] ?? 0,
+                                  columnWidth: ratios[current]?.first ?? config.scrollingColumnWidth,
+                                  in: workArea, gap: config.gapsInner(in: currentName))
+            scrollOffsets[current] = strip.offset
+            return strip.frames
         }
     }
 
@@ -382,6 +397,10 @@ final class WindowManager {
         case .move(let direction): swap(direction)
         case .resize(let delta): resize(by: delta)
         case .layout(let layout):
+            // Dwindle ratios mean nothing to master and scrolling, and the other way around.
+            if layout != currentLayout, ![layout, currentLayout].allSatisfy({ $0 == .dwindle || $0 == .accordion }) {
+                ratios[current] = nil
+            }
             layouts[current] = layout
             self.layout()
         case .fullscreen: toggleFullscreen()
@@ -395,6 +414,7 @@ final class WindowManager {
         case .resetLayout:
             layouts[current] = nil
             ratios[current] = nil
+            scrollOffsets[current] = nil
             fullscreen.subtract(workspaces[current])
             layout()
         case .closeAllButCurrent: closeAllButFocused()
@@ -438,8 +458,8 @@ final class WindowManager {
         let ids = tiled
         guard let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
         let next: Int?
-        if currentLayout == .accordion {
-            // Accordion frames overlap, so geometry can't find a neighbour; use list order.
+        if currentLayout == .accordion || currentLayout == .scrolling {
+            // Accordion frames overlap and scrolling ones can be off-screen, so geometry can't find a neighbour; use list order.
             let step = direction == .left || direction == .up ? -1 : 1
             next = ids.indices.contains(index + step) ? index + step : nil
         } else {
@@ -453,8 +473,19 @@ final class WindowManager {
 
     private func resize(by delta: CGFloat) {
         let ids = tiled
-        guard currentLayout == .dwindle, let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
-        ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), defaultRatio: config.dwindleSplitRatio)
+        guard let focused = focusedId, let index = ids.firstIndex(of: focused) else { return }
+        switch currentLayout {
+        case .dwindle:
+            ratios[current] = resized(ratios[current] ?? [], index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner(in: currentName), defaultRatio: config.dwindleSplitRatio)
+        case .master where ids.count > 1:
+            let ratio = ratios[current]?.first ?? config.masterRatio
+            ratios[current] = [resizedMasterRatio(ratio, index: index, delta: delta, count: ids.count, in: workArea, gap: config.gapsInner(in: currentName))]
+        case .scrolling:
+            // One width for every column of the workspace, so it survives windows closing and moving.
+            ratios[current] = [resizedColumnWidth(ratios[current]?.first ?? config.scrollingColumnWidth, delta: delta, in: workArea)]
+        default:
+            return
+        }
         layout()
     }
 
