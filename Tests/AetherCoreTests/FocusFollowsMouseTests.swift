@@ -20,13 +20,15 @@ private func pick(_ stack: [ScreenWindow], at point: CGPoint = CGPoint(x: 50, y:
 }
 
 @Test func ownOverlaysAndInvisibleWindowsAreLookedThrough() {
-    #expect(pick([entry(90, pid: own, layer: 3), entry(11)]) == 11)
+    #expect(pick([entry(90, pid: own), entry(11)]) == 11)
     #expect(pick([entry(91, alpha: 0), entry(10)]) == 10)
 }
 
 @Test func otherLayersAndUnmanagedWindowsOnTopBlock() {
     #expect(pick([entry(20, layer: 101), entry(10)]) == nil)
     #expect(pick([entry(21), entry(10)]) == nil)
+    // aether's own tray menu.
+    #expect(pick([entry(92, pid: own, layer: 101), entry(10)]) == nil)
 }
 
 @Test func nothingUnderThePointerOrAlreadyFocusedGivesNil() {
