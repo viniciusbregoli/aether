@@ -40,13 +40,20 @@ final class WindowManager {
     private var lastSaved: Data?
     private let animator = Animator()
     private let border = Border()
+    private let dimmer = Dimmer()
     private let tray = Tray()
     /// Cached so per-frame border updates don't cost AX round trips.
     private var borderTarget: CGWindowID?
+    /// Last frame the animator reported per window, so overlays of moving windows need no AX reads.
+    private var reportedFrames: [CGWindowID: CGRect] = [:]
 
     private init() {
         animator.onFrame = { [unowned self] id, frame in
             if id == borderTarget { border.show(around: frame, within: screenRect) }
+            if config.dimInactive > 0 {
+                reportedFrames[id] = frame
+                dimmer.move(id, to: frame)
+            }
         }
     }
 
@@ -75,6 +82,7 @@ final class WindowManager {
             activatedPid = nil
             pendingNewWindow = nil
             border.hide()
+            dimmer.hideAll()
         }
         // AeroSpace's backstop: destroy notifications are unreliable, and a mouse-up after the user
         // drags a tiled window should snap it back into place.
@@ -158,7 +166,10 @@ final class WindowManager {
         parked.subtract(gone)
         floating.subtract(gone)
         fullscreen.subtract(gone)
-        for id in gone { animator.cancel(id) }
+        for id in gone {
+            animator.cancel(id)
+            reportedFrames[id] = nil
+        }
 
         if let saved = pendingRestore {
             restoreAttempts += 1
@@ -358,6 +369,7 @@ final class WindowManager {
             }
         }
         updateBorder()
+        updateDim()
         updateTray()
         save()
     }
@@ -371,7 +383,9 @@ final class WindowManager {
     private func place(_ id: CGWindowID, _ frame: CGRect, _ dx: CGFloat) {
         guard let window = windows[id] else { return }
         let wasParked = parked.remove(id) != nil
-        animator.animate(window, from: wasParked ? frame.offsetBy(dx: dx, dy: 0) : nil, to: frame)
+        let from = wasParked ? frame.offsetBy(dx: dx, dy: 0) : nil
+        if let from { reportedFrames[id] = from }
+        animator.animate(window, from: from, to: frame)
     }
 
     private func updateBorder() {
@@ -382,6 +396,17 @@ final class WindowManager {
         }
         borderTarget = id
         border.show(around: frame, within: screenRect)
+    }
+
+    /// The focused window is `borderTarget`: it is already known to be on this workspace and visible.
+    private func updateDim() {
+        guard config.dimInactive > 0, !isScreenLocked else { return dimmer.hideAll() }
+        var frames: [CGWindowID: CGRect] = [:]
+        for id in dimTargets(in: workspaces[current], focused: borderTarget, parked: parked) {
+            let frame = animator.isAnimating(id) ? reportedFrames[id] : windows[id]?.frame
+            if let frame { frames[id] = frame }
+        }
+        dimmer.show(frames)
     }
 
     // MARK: Commands
@@ -584,6 +609,7 @@ final class WindowManager {
         if !config.animationsEnabled || config.animationDuration == 0 { animator.finishAll() }
         bindHotkeys()
         border.applyStyle()
+        dimmer.applyStyle()
         refresh(followFocus: false)
     }
 
