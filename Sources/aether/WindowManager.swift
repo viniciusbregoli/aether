@@ -55,6 +55,8 @@ final class WindowManager {
     private var borderTarget: CGWindowID?
     /// Last frame the animator reported per window, so overlays of moving windows need no AX reads.
     private var reportedFrames: [CGWindowID: CGRect] = [:]
+    private var mouseMonitor: Any?
+    private var pointerCheckScheduled = false
 
     private init() {
         animator.onFrame = { [unowned self] id, frame in
@@ -106,6 +108,7 @@ final class WindowManager {
             if !isScreenLocked { layout() }
         }
         updateMonitors()
+        updateMouseMonitor()
         pendingRestore = try? JSONDecoder().decode(SavedState.self, from: Data(contentsOf: stateURL))
         refresh(followFocus: false)
     }
@@ -132,6 +135,48 @@ final class WindowManager {
             followFocusOnRefresh = false
             refresh(followFocus: follow)
         }
+    }
+
+    private func updateMouseMonitor() {
+        if config.focusFollowsMouse, mouseMonitor == nil {
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [unowned self] _ in schedulePointerCheck() }
+        } else if !config.focusFollowsMouse, let monitor = mouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseMonitor = nil
+        }
+    }
+
+    /// Mouse moves arrive at display rate; one check per 30 ms, reading the pointer when it runs,
+    /// keeps the window list queries cheap and still lands on where the pointer stopped.
+    private func schedulePointerCheck() {
+        guard !pointerCheckScheduled else { return }
+        pointerCheckScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [self] in
+            pointerCheckScheduled = false
+            focusWindowUnderPointer()
+        }
+    }
+
+    private func focusWindowUnderPointer() {
+        guard config.focusFollowsMouse, NSEvent.pressedMouseButtons == 0, !isScreenLocked,
+              let info = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] else { return }
+        let mouse = NSEvent.mouseLocation
+        let point = CGPoint(x: mouse.x, y: (NSScreen.screens.first?.frame.height ?? 0) - mouse.y)
+        let stack = info.compactMap { entry -> ScreenWindow? in
+            guard let id = entry[kCGWindowNumber as String] as? UInt32, let pid = entry[kCGWindowOwnerPID as String] as? Int32,
+                  let bounds = entry[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds) else { return nil }
+            return ScreenWindow(id: id, pid: pid, layer: entry[kCGWindowLayer as String] as? Int ?? 0,
+                                alpha: entry[kCGWindowAlpha as String] as? Double ?? 1, bounds: rect)
+        }
+        // Every shown workspace, so hovering a window on another monitor focuses it and refresh
+        // makes that monitor's workspace current.
+        let focusable = Set(shown.values.flatMap { workspaces[$0] }.filter { !parked.contains($0) && !animator.isAnimating($0) })
+        // borderTarget usually answers "already focused" without an AX round trip; smart-border
+        // hides it on a lone window, so confirm with focusedId before focusing again.
+        guard let id = windowUnderPointer(point, in: stack, ownPid: getpid(), focusable: focusable, focused: borderTarget),
+              id != focusedId else { return }
+        windows[id]?.focus()
     }
 
     private func resumeAfterUnlock() {
@@ -734,6 +779,7 @@ final class WindowManager {
         config = new
         if !config.animationsEnabled || config.animationDuration == 0 { animator.finishAll() }
         bindHotkeys()
+        updateMouseMonitor()
         border.applyStyle()
         dimmer.applyStyle()
         refresh(followFocus: false)

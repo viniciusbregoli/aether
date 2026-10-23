@@ -1,6 +1,6 @@
 # Hyprland configuration reference and aether candidates
 
-Verified 2026-10-22. Candidates 1 through 5 are implemented in aether with the defaults below; candidates 6 through 8 remain proposals. See the [README](../README.md#configuration) for the supported configuration.
+Verified 2026-10-22. Candidates 1 through 8 are implemented in aether with the defaults below (6 and 7 as per-workspace settings and window rules). See the [README](../README.md#configuration) for the supported configuration.
 
 ## Versions and authoritative entry points
 
@@ -123,7 +123,7 @@ All candidates require matching optional fields/CodingKeys in `Settings.swift`, 
 ### 8. Opt-in focus follows mouse
 
 - **Hyprland:** `input.follow_mouse = 1` by default. Modes: `0` movement leaves focus unchanged; `1` focus follows pointer; `2` keyboard focus changes only on click; `3` pointer and keyboard focus remain separate even on click. Threshold defaults to zero. [Stable variable reference](https://wiki.hypr.land/0.56.0/Configuring/Basics/Variables/#input).
-- **Aether:** propose `focus-follows-mouse = false`, implementing only opt-in mode-1-like keyboard focus. Do not expose Hyprland's 0...3 API because independent pointer/keyboard delivery requires compositor control.
+- **Aether:** implemented as `focus-follows-mouse = false`, opt-in mode-1-like keyboard focus. The frontmost window under the pointer must be a layer-0 window of a workspace shown on any monitor that is not parked or animating; aether's own layer-0 overlays and fully transparent windows are looked through, and anything else on top (menus, the Dock, unmanaged windows) blocks the switch. Checks run at most every 30 ms and are skipped while a mouse button is down. Do not expose Hyprland's 0...3 API because independent pointer/keyboard delivery requires compositor control.
 - **Changes:** a throttled mouse-move observer in `WindowManager.start`, frontmost-window hit testing followed by existing `focus`, current-workspace/parked filtering, and suppression during animation/drag. Global event monitors alone observe events; they do not change system pointer routing. [Apple hit-testing reference](https://developer.apple.com/documentation/appkit/nswindow/windownumber(at:belowwindowwithwindownumber:)).
 - **Validation/tests:** disabled means no focus change or extra AX traffic; overlapping floating/accordion windows, gap traversal, overlays, menus/dialogs, parked 1px slivers, destroyed windows, drag, fullscreen and focus-triggered refresh loops. Feasible with SIP on, but defer from the first small implementation unless interactive verification is available.
 
