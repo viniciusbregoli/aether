@@ -1,5 +1,10 @@
 import AppKit
 
+// Client mode must not touch Accessibility or start any UI.
+if CommandLine.arguments.count > 1 {
+    runClient(Array(CommandLine.arguments.dropFirst()))
+}
+
 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
 guard AXIsProcessTrustedWithOptions(options) else {
     print("aether: grant Accessibility access to the app running this binary (System Settings > Privacy & Security > Accessibility), then start it again.")
