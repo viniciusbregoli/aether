@@ -172,21 +172,29 @@ final class WindowManager {
         }
 
         let focused = focusedId
+        // New windows a rule sent to another workspace: focus must not drag the user there.
+        var ruleMoved: Set<CGWindowID> = []
         // Windows of an app still being restored wait for their saved slot instead of landing here.
         for id in alive.keys.sorted() where workspace(of: id) == nil && !restoreWaitingApps.contains(alive[id]!.bundleId) {
-            // Like Hyprland's dwindle, a new window goes right after the focused one.
-            let ws = workspaces[current]
-            let index = focused.flatMap(ws.firstIndex(of:)).map { $0 + 1 } ?? ws.count
-            workspaces[current].insert(id, at: index)
             let window = alive[id]!
+            let (isFloating, target) = classify(window)
+            if target == current {
+                // Like Hyprland's dwindle, a new window goes right after the focused one.
+                let ws = workspaces[current]
+                let index = focused.flatMap(ws.firstIndex(of:)).map { $0 + 1 } ?? ws.count
+                workspaces[current].insert(id, at: index)
+            } else {
+                workspaces[target].append(id)
+                ruleMoved.insert(id)
+            }
             if pendingNewWindow?.pid == window.pid { pendingNewWindow = nil }
-            if config.floatingApps.contains(window.bundleId) || !window.ax.isSettable(kAXSizeAttribute) { floating.insert(id) }
+            if isFloating { floating.insert(id) }
         }
         windows = alive
 
         let activated = activatedPid
         activatedPid = nil
-        if followFocus, let focused, let ws = workspace(of: focused), ws != current {
+        if followFocus, let focused, !ruleMoved.contains(focused), let ws = workspace(of: focused), ws != current {
             let pid = windows[focused]?.pid
             if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
                 // The app refocused its old window while we wait for the one we asked for: stay here.
@@ -213,6 +221,24 @@ final class WindowManager {
         }
         if let focused, workspace(of: focused) == current { lastFocus[current] = focused }
         layout()
+        // The app focused its new window, which is now parked.
+        if let focused, ruleMoved.contains(focused) { focus(windowToFocus(in: workspaces[current], remembered: lastFocus[current])) }
+    }
+
+    /// Applies `floating-apps`, then the window rules, to a window that just appeared. Returns
+    /// whether it floats and the workspace index it lands on.
+    private func classify(_ window: Window) -> (floating: Bool, workspace: Int) {
+        var isFloating = config.floatingApps.contains(window.bundleId)
+        var target = current
+        if !config.windowRules.isEmpty {
+            let facts = WindowFacts(appId: window.bundleId,
+                                    appName: NSRunningApplication(processIdentifier: window.pid)?.localizedName ?? "",
+                                    title: window.ax.get(kAXTitleAttribute) ?? "")
+            let outcome = evaluateRules(config.windowRules, for: facts, workspace: config.workspaces[current], floating: isFloating)
+            isFloating = outcome.floating
+            target = config.workspaces.firstIndex(of: outcome.workspace) ?? current
+        }
+        return (isFloating || !window.ax.isSettable(kAXSizeAttribute), target)
     }
 
     private func register(_ window: Window) -> Window {
