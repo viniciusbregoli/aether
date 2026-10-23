@@ -49,7 +49,7 @@ final class WindowManager {
 
     private init() {
         animator.onFrame = { [unowned self] id, frame in
-            if id == borderTarget { border.show(around: frame, within: screenRect) }
+            if id == borderTarget { border.show(around: frame, within: screenRect, above: id, reorder: false) }
             if config.dimInactive > 0 {
                 reportedFrames[id] = frame
                 dimmer.move(id, to: frame)
@@ -395,7 +395,7 @@ final class WindowManager {
             return border.hide()
         }
         borderTarget = id
-        border.show(around: frame, within: screenRect)
+        border.show(around: frame, within: screenRect, above: id)
     }
 
     /// The focused window is `borderTarget`: it is already known to be on this workspace and visible.

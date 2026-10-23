@@ -13,8 +13,6 @@ final class Border {
         window.backgroundColor = .clear
         window.hasShadow = false
         window.ignoresMouseEvents = true
-        // Tiled windows never overlap, so sitting above all normal windows is enough for now.
-        window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
         let view = NSView()
@@ -53,8 +51,10 @@ final class Border {
 
     /// `frame` and `screen` are in AX (top-left origin) coordinates. The border sits outside the
     /// window but is clamped to the screen, so on windows touching the screen edges it is drawn
-    /// just inside them instead of vanishing off-screen.
-    func show(around frame: CGRect, within screen: CGRect) {
+    /// just inside them instead of vanishing off-screen. It stays at normal level, directly above
+    /// window `id`, so dialogs and floating windows above that window still cover it. Moving does
+    /// not change the stack, so per-frame callers pass `reorder: false`.
+    func show(around frame: CGRect, within screen: CGRect, above id: CGWindowID, reorder: Bool = true) {
         guard config.borderEnabled, config.borderWidth > 0 else { return hide() }
         let w = config.borderWidth
         let rect = frame.insetBy(dx: -w, dy: -w).intersection(screen)
@@ -68,7 +68,7 @@ final class Border {
         let radius = config.borderRadius + w / 2
         shape.path = CGPath(roundedRect: bounds.insetBy(dx: w / 2, dy: w / 2), cornerWidth: radius, cornerHeight: radius, transform: nil)
         CATransaction.commit()
-        if !window.isVisible { window.orderFrontRegardless() }
+        if reorder || !window.isVisible { window.order(.above, relativeTo: Int(id)) }
     }
 
     func hide() { window.orderOut(nil) }
