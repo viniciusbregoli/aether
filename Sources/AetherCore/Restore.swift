@@ -11,6 +11,11 @@ public struct WindowKey: Codable, Equatable, Sendable {
     }
 }
 
+/// An unreadable AX snapshot cannot prove a window closed. Fresh entries still replace cached ones.
+public func reconcileWindowSnapshot<Value>(previous: [UInt32: Value], discovered: [UInt32: Value], isComplete: Bool) -> [UInt32: Value] {
+    isComplete ? discovered : previous.merging(discovered) { _, fresh in fresh }
+}
+
 /// Pairs saved windows with live ones. Window ids survive an aether restart but not an app
 /// restart, so fall back to same app and title, then same app, each live window used once.
 /// Returns saved index -> live window id.

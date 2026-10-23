@@ -8,6 +8,13 @@ import Carbon.HIToolbox
 @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
 
+var isScreenLocked: Bool {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
+    // This session key covers refreshes that arrive before the distributed lock notification.
+    return session["CGSSessionScreenIsLocked"] as? Bool == true
+        || session[kCGSessionOnConsoleKey as String] as? Bool == false
+}
+
 extension AXUIElement {
     func get<T>(_ attribute: String) -> T? {
         var value: CFTypeRef?
