@@ -277,3 +277,12 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(resizedColumnWidth(0.5, delta: 5000, in: screen) == 1)
     #expect(resizedColumnWidth(0.5, delta: -5000, in: screen) == 0.1)
 }
+
+@Test func masterStackKeepsValidHeightsWithLargeGaps() {
+    let area = CGRect(x: 0, y: 0, width: 1000, height: 600)
+    let frames = master(count: 7, in: area, gap: 150, ratio: 0.5)
+    for frame in frames.dropFirst() {
+        #expect(frame.height >= 0)
+        #expect(area.contains(frame))
+    }
+}
