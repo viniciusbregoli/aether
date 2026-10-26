@@ -34,6 +34,9 @@ final class WindowManager {
     private var lastFocus: [Int: CGWindowID] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
+    /// Apps with windows that couldn't be read yet, and how many quick rescans they have had.
+    private var unsettledApps: Set<String> = []
+    private var unsettledRetries = 0
     private var followFocusOnRefresh = false
     /// App activated through Dock, Spotlight or Cmd-Tab since the last refresh.
     private var activatedPid: pid_t?
@@ -77,8 +80,14 @@ final class WindowManager {
             activatedPid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
             scheduleRefresh(followFocus: true)
         }
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
+        // A launching app answers AX late and may show its first window before it sends any
+        // notification we could hear, so look again a few times while it starts up.
+        center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [unowned self] _ in
+            for delay in [0.05, 0.3, 0.8, 1.6, 3.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in scheduleRefresh() }
+            }
+        }
+        for name in [NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
         }
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification,
@@ -230,6 +239,7 @@ final class WindowManager {
         alive.merge(missing.filter { isOnSomeSpace($0.key) }) { fresh, _ in fresh }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
+        retryUnsettled(incompleteApps)
         for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -313,6 +323,19 @@ final class WindowManager {
         if let focused, ruleMoved.contains(focused) { focus(windowToFocus(in: workspaces[current], remembered: lastFocus[current])) }
     }
 
+    /// A window that is still being set up (no subrole yet, say) is skipped by a scan, and nothing
+    /// may announce it again, so scans with unreadable windows repeat a few times. An app that never
+    /// answers stops being retried until the set of such apps changes.
+    private func retryUnsettled(_ apps: Set<String>) {
+        if apps != unsettledApps {
+            unsettledApps = apps
+            unsettledRetries = 0
+        }
+        guard !apps.isEmpty, unsettledRetries < 10 else { return }
+        unsettledRetries += 1
+        scheduleRefresh(after: 0.2)
+    }
+
     /// Applies `floating-apps`, then the window rules, to a window that just appeared. Returns
     /// whether it floats and the workspace index it lands on.
     private func classify(_ window: Window) -> (floating: Bool, workspace: Int) {
@@ -345,11 +368,15 @@ final class WindowManager {
         guard AXObserverCreate(pid, { _, element, notification, _ in
             WindowManager.shared.handle(notification as String, element)
         }, &observer) == .success, let observer else { return }
-        for n in [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification] {
-            AXObserverAddNotification(observer, axApp, n as CFString, nil)
+        let added = [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification].map {
+            AXObserverAddNotification(observer, axApp, $0 as CFString, nil)
         }
+        // An app that just launched can refuse these until it is ready. Keeping the observer anyway
+        // would leave its windows unannounced for good; dropping it lets the next scan try again.
+        guard !added.contains(.cannotComplete) else { return }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
         observers[pid] = observer
+        for window in windows.values where window.pid == pid { _ = register(window) }
     }
 
     private func isManageable(_ element: AXUIElement) -> Bool? {
