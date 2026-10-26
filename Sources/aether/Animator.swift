@@ -66,15 +66,17 @@ final class Animator: NSObject {
     private func disableEnhanced(_ pid: pid_t) {
         guard !enhanced.contains(pid) else { return }
         let app = AXUIElementCreateApplication(pid)
-        guard app.get("AXEnhancedUserInterface") == true else { return }
-        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
+        guard app.get("AXEnhancedUserInterface") == true,
+              AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse) == .success else { return }
         enhanced.insert(pid)
     }
 
     private func restoreEnhanced(_ pid: pid_t) {
         guard enhanced.contains(pid), !animations.values.contains(where: { $0.window.pid == pid }) else { return }
+        // A failed write keeps the app listed, so the end of its next animation tries again.
+        guard AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXEnhancedUserInterface" as CFString,
+                                           kCFBooleanTrue) == .success else { return }
         enhanced.remove(pid)
-        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
     }
 
     /// Disabling motion on reload still completes outgoing workspace moves so they get parked.
