@@ -30,6 +30,7 @@ final class WindowManager {
     private var fullscreen: Set<CGWindowID> = []
     /// Windows on a native fullscreen Space, and the workspace slot they left.
     private var fullscreenHomes: [CGWindowID: FullscreenHome] = [:]
+    private var returnFocusHold = FocusHold()
     private var floating: Set<CGWindowID> = []
     private var parked: Set<CGWindowID> = []
     private var floatingFrames: [CGWindowID: CGRect] = [:]
@@ -253,12 +254,12 @@ final class WindowManager {
         }
         // Back from native fullscreen: its old slot, even if the user switched workspaces while
         // macOS was still animating it out.
-        var returnedHidden: Set<CGWindowID> = []
+        let now = ProcessInfo.processInfo.systemUptime
         for (id, home) in fullscreenHomes where alive[id] != nil {
             fullscreenHomes[id] = nil
             returnFromFullscreen(id, to: home, in: &workspaces)
             if home.floating { floating.insert(id) }
-            if !shown.values.contains(home.workspace) { returnedHidden.insert(id) }
+            if !shown.values.contains(home.workspace) { returnFocusHold.hold(id, until: now + 1) }
         }
 
         if let saved = pendingRestore {
@@ -277,7 +278,10 @@ final class WindowManager {
         let focused = focusedId
         // New windows a rule sent to another workspace, and windows back from native fullscreen on
         // a hidden one: focus must not drag the user there.
-        var ruleMoved = returnedHidden
+        var ruleMoved: Set<CGWindowID> = []
+        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), returnFocusHold.isHeld(focused, at: now) {
+            ruleMoved.insert(focused)
+        }
         // Windows of an app still being restored wait for their saved slot instead of landing here.
         for id in alive.keys.sorted() where workspace(of: id) == nil && !restoreWaitingApps.contains(alive[id]!.bundleId) {
             let window = alive[id]!
