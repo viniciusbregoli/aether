@@ -34,3 +34,18 @@ import Testing
     returnFromFullscreen(5, to: FullscreenHome(workspace: 7, index: 0, floating: false), in: &workspaces)
     #expect(workspaces == [[1], [3, 4]])
 }
+
+@Test func focusHoldCoversALateFocusThenLetsGo() {
+    var hold = FocusHold()
+    hold.hold(2, until: 11)
+    // macOS focuses the window after it was put back: still held.
+    let late = hold.isHeld(2, at: 10.5)
+    let other = hold.isHeld(3, at: 10.5)
+    // The user focusing it later switches workspaces as usual, and the hold is gone for good.
+    let expired = hold.isHeld(2, at: 11)
+    let afterExpiry = hold.isHeld(2, at: 10.5)
+    #expect(late)
+    #expect(!other)
+    #expect(!expired)
+    #expect(!afterExpiry)
+}
