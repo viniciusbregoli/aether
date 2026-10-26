@@ -21,6 +21,10 @@ final class Animator: NSObject {
     }
 
     private var animations: [CGWindowID: Animation] = [:]
+    /// Apps that had AXEnhancedUserInterface on when one of their windows started moving.
+    /// Assistive tools turn it on (Zen and Finder had it), and then the app animates every position
+    /// write itself, trailing behind ours; it stays off until the app's last animation ends.
+    private var enhanced: Set<pid_t> = []
     private var link: CADisplayLink?
     /// Called with every frame a window is moved to, so overlays (the border) can follow.
     var onFrame: ((CGWindowID, CGRect) -> Void)?
@@ -35,13 +39,17 @@ final class Animator: NSObject {
         guard let start = from ?? inFlight ?? window.frame, start != to,
               config.animationsEnabled, config.animationDuration > 0 else {
             animations[window.id] = nil
+            restoreEnhanced(window.pid)
             // Every relayout lands here for windows that didn't move; skip the AX writes for those.
             if from != nil || inFlight != nil || window.frame != to { window.setFrame(to) }
             onFrame?(window.id, to)
             completion?()
             return
         }
-        if let from { window.setPosition(from.origin) }
+        disableEnhanced(window.pid)
+        // A parked window can have another size than the one it slides in with; sizing it while it is
+        // still off screen leaves only position writes for the slide.
+        if let from { window.setFrame(from) }
         animations[window.id] = Animation(window: window, from: start, to: to, start: now,
                                            duration: config.animationDuration, curve: config.animationCurve, completion: completion)
         if link == nil, let screen = NSScreen.screens.first {
@@ -50,7 +58,26 @@ final class Animator: NSObject {
         }
     }
 
-    func cancel(_ id: CGWindowID) { animations[id] = nil }
+    func cancel(_ id: CGWindowID) {
+        guard let animation = animations.removeValue(forKey: id) else { return }
+        restoreEnhanced(animation.window.pid)
+    }
+
+    private func disableEnhanced(_ pid: pid_t) {
+        guard !enhanced.contains(pid) else { return }
+        let app = AXUIElementCreateApplication(pid)
+        guard app.get("AXEnhancedUserInterface") == true,
+              AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse) == .success else { return }
+        enhanced.insert(pid)
+    }
+
+    private func restoreEnhanced(_ pid: pid_t) {
+        guard enhanced.contains(pid), !animations.values.contains(where: { $0.window.pid == pid }) else { return }
+        // A failed write keeps the app listed, so the end of its next animation tries again.
+        guard AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXEnhancedUserInterface" as CFString,
+                                           kCFBooleanTrue) == .success else { return }
+        enhanced.remove(pid)
+    }
 
     /// Disabling motion on reload still completes outgoing workspace moves so they get parked.
     func finishAll() {
@@ -63,6 +90,7 @@ final class Animator: NSObject {
             onFrame?(animation.window.id, animation.to)
             animation.completion?()
         }
+        for pid in enhanced { restoreEnhanced(pid) }
     }
 
     @objc private func tick() {
@@ -72,6 +100,7 @@ final class Animator: NSObject {
             if t >= 1 {
                 animations[id] = nil
                 a.window.setFrame(a.to)
+                restoreEnhanced(a.window.pid)
                 onFrame?(id, a.to)
                 a.completion?()
                 continue
