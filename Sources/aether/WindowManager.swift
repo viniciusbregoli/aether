@@ -28,6 +28,9 @@ final class WindowManager {
     private var ratios: [Int: [CGFloat]] = [:]
     private var scrollOffsets: [Int: CGFloat] = [:]
     private var fullscreen: Set<CGWindowID> = []
+    /// Windows on a native fullscreen Space, and the workspace slot they left.
+    private var fullscreenHomes: [CGWindowID: FullscreenHome] = [:]
+    private var returnFocusHold = FocusHold()
     private var floating: Set<CGWindowID> = []
     private var parked: Set<CGWindowID> = []
     private var floatingFrames: [CGWindowID: CGRect] = [:]
@@ -225,6 +228,10 @@ final class WindowManager {
                 }
                 guard manageable else {
                     excluded.insert(id)
+                    if let home = fullscreenHome(of: id, in: workspaces, floating: floating.contains(id)),
+                       (element.get("AXFullScreen") as Bool?) == true {
+                        fullscreenHomes[id] = home
+                    }
                     continue
                 }
                 discovered[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
@@ -240,6 +247,10 @@ final class WindowManager {
         // sight, not closed.
         let missing = windows.filter { alive[$0.key] == nil && running.contains($0.value.pid) && !excludedAll.contains($0.key) }
         alive.merge(missing.filter { isOnSomeSpace($0.key) }) { fresh, _ in fresh }
+        // A window closed while in native fullscreen is on no Space.
+        for id in fullscreenHomes.keys where !excludedAll.contains(id) && alive[id] == nil && !isOnSomeSpace(id) {
+            fullscreenHomes[id] = nil
+        }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
         retryUnsettled(incompleteApps)
@@ -257,6 +268,15 @@ final class WindowManager {
             animator.cancel(id)
             reportedFrames[id] = nil
         }
+        // Back from native fullscreen: its old slot, even if the user switched workspaces while
+        // macOS was still animating it out.
+        let now = ProcessInfo.processInfo.systemUptime
+        for (id, home) in fullscreenHomes where alive[id] != nil {
+            fullscreenHomes[id] = nil
+            returnFromFullscreen(id, to: home, in: &workspaces)
+            if home.floating { floating.insert(id) }
+            if !shown.values.contains(home.workspace) { returnFocusHold.hold(id, until: now + 1) }
+        }
 
         if let saved = pendingRestore {
             let started = restoreStarted ?? CACurrentMediaTime()
@@ -273,8 +293,12 @@ final class WindowManager {
         }
 
         let focused = focusedId
-        // New windows a rule sent to another workspace: focus must not drag the user there.
+        // New windows a rule sent to another workspace, and windows back from native fullscreen on
+        // a hidden one: focus must not drag the user there.
         var ruleMoved: Set<CGWindowID> = []
+        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), returnFocusHold.isHeld(focused, at: now) {
+            ruleMoved.insert(focused)
+        }
         // Windows of an app still being restored wait for their saved slot instead of landing here.
         for id in alive.keys.sorted() where workspace(of: id) == nil && !restoreWaitingApps.contains(alive[id]!.bundleId) {
             let window = alive[id]!
