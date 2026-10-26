@@ -33,6 +33,8 @@ final class WindowManager {
     private var floatingFrames: [CGWindowID: CGRect] = [:]
     private var lastFocus: [Int: CGWindowID] = [:]
     private var observers: [pid_t: AXObserver] = [:]
+    /// App notifications refused while the app was starting up, asked for again on each scan.
+    private var refusedNotifications: [pid_t: Set<String>] = [:]
     private var refreshScheduled = false
     /// Apps with windows that couldn't be read yet, and how many quick rescans they have had.
     private var unsettledApps: Set<String> = []
@@ -48,7 +50,8 @@ final class WindowManager {
     private var restoreWaiting: [Int]?
     private var restoreWaitingApps: Set<String> = []
     private var restoreRank: [CGWindowID: Int] = [:]
-    private var restoreAttempts = 0
+    /// When restoring started, measured in time because quick rescans make the count of scans unreliable.
+    private var restoreStarted: CFTimeInterval?
     private var lastSaved: Data?
     private let animator = Animator()
     private let border = Border()
@@ -240,7 +243,10 @@ final class WindowManager {
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
         retryUnsettled(incompleteApps)
-        for pid in observers.keys where !running.contains(pid) { observers[pid] = nil }
+        for pid in observers.keys where !running.contains(pid) {
+            observers[pid] = nil
+            refusedNotifications[pid] = nil
+        }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
         for i in workspaces.indices { workspaces[i].removeAll(where: gone.contains) }
@@ -253,9 +259,10 @@ final class WindowManager {
         }
 
         if let saved = pendingRestore {
-            restoreAttempts += 1
+            let started = restoreStarted ?? CACurrentMediaTime()
+            restoreStarted = started
             // Restore what's readable now. Apps that never answer stop being waited on after ~10s.
-            if restore(saved, from: alive, deferring: restoreAttempts < 20 ? incompleteApps : []) {
+            if restore(saved, from: alive, deferring: CACurrentMediaTime() - started < 10 ? incompleteApps : []) {
                 scheduleRefresh(after: 0.5)
             } else {
                 pendingRestore = nil
@@ -363,17 +370,24 @@ final class WindowManager {
     }
 
     private func observe(_ pid: pid_t, _ axApp: AXUIElement) {
-        guard observers[pid] == nil else { return }
+        if let observer = observers[pid] {
+            for n in refusedNotifications[pid] ?? [] where AXObserverAddNotification(observer, axApp, n as CFString, nil) != .cannotComplete {
+                refusedNotifications[pid]?.remove(n)
+            }
+            return
+        }
         var observer: AXObserver?
         guard AXObserverCreate(pid, { _, element, notification, _ in
             WindowManager.shared.handle(notification as String, element)
         }, &observer) == .success, let observer else { return }
-        let added = [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification].map {
-            AXObserverAddNotification(observer, axApp, $0 as CFString, nil)
+        let refused = [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification].filter {
+            AXObserverAddNotification(observer, axApp, $0 as CFString, nil) == .cannotComplete
         }
-        // An app that just launched can refuse these until it is ready. Keeping the observer anyway
-        // would leave its windows unannounced for good; dropping it lets the next scan try again.
-        guard !added.contains(.cannotComplete) else { return }
+        // An app that just launched can refuse these until it is ready. Without window-created its
+        // windows would go unannounced for good, so the observer is dropped and the next scan starts
+        // over; any other refused one is asked for again on later scans.
+        guard !refused.contains(kAXWindowCreatedNotification) else { return }
+        if !refused.isEmpty { refusedNotifications[pid] = Set(refused) }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
         observers[pid] = observer
         for window in windows.values where window.pid == pid { _ = register(window) }
