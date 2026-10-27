@@ -469,13 +469,14 @@ final class WindowManager {
         let main = NSScreen.screens.first.flatMap(displayId) ?? ids[0]
         let kept = keep ? shown.filter { ids.contains($0.key) } : [:]
         let wasFocused = keep ? shown.first { $0.value == current }?.key : nil
-        if let wasFocused, !ids.contains(wasFocused), let ws = kept[main] ?? kept.values.first {
+        monitors = fresh
+        if let wasFocused, !ids.contains(wasFocused), forcedMonitor(of: current) == nil, let ws = kept[main] ?? kept.values.first {
             // The focused monitor went away: focus moves to one that is left, and the workspace it
-            // showed stays hidden until it comes back.
+            // showed stays hidden until it comes back. A pinned one that still matches a monitor
+            // moves there and keeps focus.
             previous = current
             current = ws
         }
-        monitors = fresh
         let forced = Dictionary(uniqueKeysWithValues: workspaces.indices.compactMap { ws in forcedMonitor(of: ws).map { (ws, $0) } })
         shown = assignWorkspaces(monitors: ids, kept: kept, preferred: preferred ?? lastShown, focused: current,
                                  focusedMonitor: wasFocused.flatMap { ids.contains($0) ? $0 : nil } ?? main,
