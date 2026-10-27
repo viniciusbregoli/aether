@@ -41,6 +41,13 @@ private let window = CGSize(width: 800, height: 600)
     #expect(assignWorkspaces(monitors: [1, 2], kept: [:], focused: 0, focusedMonitor: 1, count: 1, occupied: []) == [1: 0])
 }
 
+@Test func hiddenWorkspacesOpenWhereTheyWereLastShown() {
+    #expect(homeMonitor(lastShownOn: 2, monitors: [1, 2], main: 1) == 2)
+    // Never shown, or shown on a monitor that is gone: the main one.
+    #expect(homeMonitor(lastShownOn: nil, monitors: [1, 2], main: 1) == 1)
+    #expect(homeMonitor(lastShownOn: 3, monitors: [1, 2], main: 1) == 1)
+}
+
 @Test func parkingHangsOffACornerNoOtherMonitorSees() {
     let visibleTop = CGRect(x: 0, y: 25, width: 1920, height: 1025)
     #expect(parkingSpot(size: window, monitor: visibleTop, others: [below]) == CGPoint(x: 1919, y: 1049))
