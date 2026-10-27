@@ -40,6 +40,12 @@ public func assignWorkspaces(monitors: [UInt32], kept: [UInt32: Int], preferred:
     return result
 }
 
+/// The monitor a hidden workspace opens on, the AeroSpace way: the one it was last shown on
+/// while that monitor is connected, else the main one.
+public func homeMonitor(lastShownOn last: UInt32?, monitors: [UInt32], main: UInt32) -> UInt32 {
+    last.flatMap { monitors.contains($0) ? $0 : nil } ?? main
+}
+
 /// Where a hidden window of `size` waits: macOS won't put a window fully off-screen, so it hangs
 /// off the bottom-right corner of `monitor` with a 1px sliver left on it, or off the bottom-left
 /// one when hanging right would cover one of the `others` monitors.

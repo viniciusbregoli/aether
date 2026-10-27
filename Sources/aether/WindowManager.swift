@@ -772,12 +772,14 @@ final class WindowManager {
     }
 
     /// A workspace shown on another monitor just takes focus there; a hidden one replaces the
-    /// focused monitor's workspace.
+    /// workspace on its home monitor, and focus moves there.
     private func switchTo(_ ws: Int, focusing target: CGWindowID? = nil) {
         guard ws != current, workspaces.indices.contains(ws) else { return }
         let slide: CGFloat = ws > current ? 1 : -1
         let visible = shown.values.contains(ws)
-        if !visible, let monitor = focusedMonitor { shown[monitor.id] = ws }
+        if !visible, let main = NSScreen.screens.first.flatMap(displayId) ?? monitors.first?.id {
+            shown[homeMonitor(lastShownOn: lastMonitor[ws], monitors: monitors.map(\.id), main: main)] = ws
+        }
         previous = current
         current = ws
         layout(slide: visible ? 0 : slide)
