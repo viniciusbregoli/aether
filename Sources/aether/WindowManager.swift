@@ -461,7 +461,7 @@ final class WindowManager {
     /// saved assignments as `preferred` instead.
     private func updateMonitors(preferred: [CGDirectDisplayID: Int]? = nil, keep: Bool = true) {
         let fresh = NSScreen.screens.compactMap { screen in
-            displayId(screen).map { Monitor(id: $0, frame: flip(screen.frame), visible: flip(screen.visibleFrame)) }
+            displayId(screen).map { Monitor(id: $0, name: screen.localizedName, frame: flip(screen.frame), visible: flip(screen.visibleFrame)) }
         }.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         // Closing the lid can briefly report no screens; keep the old ones until real ones show up.
         guard !fresh.isEmpty else { return }
@@ -476,9 +476,19 @@ final class WindowManager {
             current = ws
         }
         monitors = fresh
+        let forced = Dictionary(uniqueKeysWithValues: workspaces.indices.compactMap { ws in forcedMonitor(of: ws).map { (ws, $0) } })
         shown = assignWorkspaces(monitors: ids, kept: kept, preferred: preferred ?? lastShown, focused: current,
                                  focusedMonitor: wasFocused.flatMap { ids.contains($0) ? $0 : nil } ?? main,
-                                 count: workspaces.count, occupied: Set(workspaces.indices.filter { !workspaces[$0].isEmpty }))
+                                 count: workspaces.count, occupied: Set(workspaces.indices.filter { !workspaces[$0].isEmpty }),
+                                 forced: forced)
+    }
+
+    private var mainMonitorId: CGDirectDisplayID? { NSScreen.screens.first.flatMap(displayId) ?? monitors.first?.id }
+
+    /// The connected monitor `workspace-to-monitor-force-assignment` puts `ws` on, if any.
+    private func forcedMonitor(of ws: Int) -> CGDirectDisplayID? {
+        guard let patterns = config.workspaceMonitors[config.workspaces[ws]], let main = mainMonitorId else { return nil }
+        return AetherCore.forcedMonitor(patterns, monitors: monitors.map { ($0.id, $0.name) }, main: main)
     }
 
     private func targetMonitor(_ target: MonitorTarget) -> Int? {
@@ -777,8 +787,8 @@ final class WindowManager {
         guard ws != current, workspaces.indices.contains(ws) else { return }
         let slide: CGFloat = ws > current ? 1 : -1
         let visible = shown.values.contains(ws)
-        if !visible, let main = NSScreen.screens.first.flatMap(displayId) ?? monitors.first?.id {
-            shown[homeMonitor(lastShownOn: lastMonitor[ws], monitors: monitors.map(\.id), main: main)] = ws
+        if !visible, let main = mainMonitorId {
+            shown[homeMonitor(forced: forcedMonitor(of: ws), lastShownOn: lastMonitor[ws], monitors: monitors.map(\.id), main: main)] = ws
         }
         previous = current
         current = ws
@@ -856,6 +866,8 @@ final class WindowManager {
         updateMouseMonitor()
         border.applyStyle()
         dimmer.applyStyle()
+        // Force assignments may have changed: workspaces shown on the wrong monitor move.
+        updateMonitors()
         refresh(followFocus: false)
     }
 
@@ -938,6 +950,7 @@ private struct SavedState: Codable {
 /// A screen in AX (top-left origin) coordinates.
 private struct Monitor {
     let id: CGDirectDisplayID
+    let name: String
     let frame: CGRect
     let visible: CGRect
 }
