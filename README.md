@@ -148,7 +148,7 @@ Columns outside the screen keep their position on the strip. macOS may refuse to
 
 ### Multiple monitors
 
-Each monitor shows one workspace, the AeroSpace way. `workspace <name>` on a workspace that another monitor shows moves focus to that monitor; any other workspace replaces the one on the focused monitor. A monitor that gets connected shows the first empty workspace, one that goes away takes its workspace into hiding, and the monitor assignments are saved with the layout.
+Each monitor shows one workspace, the AeroSpace way. Every workspace belongs to the monitor it was last shown on, or to the main monitor (the one with the menu bar) before it is ever shown or when its monitor is disconnected. `workspace <name>` shows the workspace on that monitor, replacing the one there, and moves focus to it; a workspace already shown just takes focus. Hidden workspaces forget their monitor when aether restarts. A monitor that gets connected shows the first empty workspace, one that goes away takes its workspace into hiding, and the monitor assignments are saved with the layout.
 
 `focus-monitor` and `move-node-to-monitor` take `left`, `right`, `up`, `down`, `next` or `prev`. `next` and `prev` go through the monitors left to right and always wrap; AeroSpace's `--wrap-around` flag is accepted and ignored. They have no default bindings, for example:
 
