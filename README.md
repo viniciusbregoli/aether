@@ -150,6 +150,16 @@ Columns outside the screen keep their position on the strip. macOS may refuse to
 
 Each monitor shows one workspace, the AeroSpace way. Every workspace belongs to the monitor it was last shown on, or to the main monitor (the one with the menu bar) before it is ever shown or when its monitor is disconnected. `workspace <name>` shows the workspace on that monitor, replacing the one there, and moves focus to it; a workspace already shown just takes focus. Hidden workspaces forget their monitor when aether restarts. A monitor that gets connected shows the first empty workspace, one that goes away takes its workspace into hiding, and the monitor assignments are saved with the layout.
 
+`[workspace-to-monitor-force-assignment]` pins workspaces to a monitor, with AeroSpace's syntax. A value is a monitor number counting left to right from 1, `'main'`, `'secondary'` (the other monitor when there are exactly two), or a case-insensitive regex searched for in the monitor's name (System Settings > Displays shows it). A list tries each in order. A pinned workspace always opens on that monitor, and a newly connected monitor never picks a workspace pinned to another one. While no pattern matches a connected monitor, the workspace behaves as if it weren't pinned. Reloading the config moves workspaces already shown on the wrong monitor.
+
+```toml
+[workspace-to-monitor-force-assignment]
+    1 = 'main'
+    2 = 'main'
+    A = 'built-in'
+    B = ['dell', 'secondary']
+```
+
 `focus-monitor` and `move-node-to-monitor` take `left`, `right`, `up`, `down`, `next` or `prev`. `next` and `prev` go through the monitors left to right and always wrap; AeroSpace's `--wrap-around` flag is accepted and ignored. They have no default bindings, for example:
 
 ```toml

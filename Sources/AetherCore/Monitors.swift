@@ -1,4 +1,36 @@
 import CoreGraphics
+import Foundation
+
+/// One `workspace-to-monitor-force-assignment` pattern, in AeroSpace's syntax.
+public enum MonitorPattern: Equatable, Sendable {
+    /// 1-based, counting monitors left to right.
+    case index(Int)
+    case main
+    /// The monitor that isn't the main one, when there are exactly two.
+    case secondary
+    /// A case-insensitive regex searched for in the monitor's name.
+    case name(String)
+}
+
+/// The monitor picked by the first of `patterns` that matches a connected one. `monitors` are
+/// ordered left to right.
+public func forcedMonitor(_ patterns: [MonitorPattern], monitors: [(id: UInt32, name: String)], main: UInt32) -> UInt32? {
+    for pattern in patterns {
+        switch pattern {
+        case .index(let n):
+            if monitors.indices.contains(n - 1) { return monitors[n - 1].id }
+        case .main:
+            if monitors.contains(where: { $0.id == main }) { return main }
+        case .secondary:
+            if monitors.count == 2, let other = monitors.first(where: { $0.id != main }) { return other.id }
+        case .name(let regex):
+            if let match = monitors.first(where: { $0.name.range(of: regex, options: [.regularExpression, .caseInsensitive]) != nil }) {
+                return match.id
+            }
+        }
+    }
+    return nil
+}
 
 /// What `focus-monitor` and `move-node-to-monitor` point at.
 public enum MonitorTarget: Equatable, Sendable {
@@ -18,32 +50,38 @@ public func monitor(_ target: MonitorTarget, from index: Int, in frames: [CGRect
 }
 
 /// Which workspace each monitor shows, as display id -> workspace index. Assignments in `kept`
-/// stay, then the `preferred` (saved) ones apply, and `focused` is always shown: on
-/// `focusedMonitor` unless it already is. The other monitors get the first hidden empty
-/// workspace, else the first hidden one.
+/// stay, then the `preferred` (saved) ones apply, and `focused` is always shown: on its
+/// `forced` monitor, else on `focusedMonitor`, unless it already is. The other monitors get the
+/// first hidden empty workspace, else the first hidden one. A workspace in `forced` (workspace ->
+/// display id) only ever goes to that monitor.
 public func assignWorkspaces(monitors: [UInt32], kept: [UInt32: Int], preferred: [UInt32: Int] = [:],
-                             focused: Int, focusedMonitor: UInt32, count: Int, occupied: Set<Int>) -> [UInt32: Int] {
+                             focused: Int, focusedMonitor: UInt32, count: Int, occupied: Set<Int>,
+                             forced: [Int: UInt32] = [:]) -> [UInt32: Int] {
     var result: [UInt32: Int] = [:]
+    func allowed(_ ws: Int, on monitor: UInt32) -> Bool {
+        (0..<count).contains(ws) && !result.values.contains(ws) && (forced[ws].map { $0 == monitor } ?? true)
+    }
     func take(_ monitor: UInt32, _ ws: Int?) {
-        guard let ws, result[monitor] == nil, (0..<count).contains(ws), !result.values.contains(ws) else { return }
+        guard let ws, result[monitor] == nil, allowed(ws, on: monitor) else { return }
         result[monitor] = ws
     }
     for m in monitors { take(m, kept[m]) }
     for m in monitors { take(m, preferred[m]) }
-    if !result.values.contains(focused), monitors.contains(focusedMonitor), (0..<count).contains(focused) {
-        result[focusedMonitor] = focused
+    let target = forced[focused] ?? focusedMonitor
+    if !result.values.contains(focused), monitors.contains(target), (0..<count).contains(focused) {
+        result[target] = focused
     }
     for m in monitors {
-        take(m, (0..<count).first { !result.values.contains($0) && !occupied.contains($0) })
-        take(m, (0..<count).first { !result.values.contains($0) })
+        take(m, (0..<count).first { allowed($0, on: m) && !occupied.contains($0) })
+        take(m, (0..<count).first { allowed($0, on: m) })
     }
     return result
 }
 
-/// The monitor a hidden workspace opens on, the AeroSpace way: the one it was last shown on
-/// while that monitor is connected, else the main one.
-public func homeMonitor(lastShownOn last: UInt32?, monitors: [UInt32], main: UInt32) -> UInt32 {
-    last.flatMap { monitors.contains($0) ? $0 : nil } ?? main
+/// The monitor a hidden workspace opens on, the AeroSpace way: its `forced` one, else the one it
+/// was last shown on while that monitor is connected, else the main one.
+public func homeMonitor(forced: UInt32? = nil, lastShownOn last: UInt32?, monitors: [UInt32], main: UInt32) -> UInt32 {
+    forced ?? last.flatMap { monitors.contains($0) ? $0 : nil } ?? main
 }
 
 /// Where a hidden window of `size` waits: macOS won't put a window fully off-screen, so it hangs

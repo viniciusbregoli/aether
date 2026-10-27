@@ -115,6 +115,8 @@ public struct Settings: Equatable, Sendable {
     public var reuseWindowApps: Set<String>
     public var windowRules: [WindowRule]
     public var workspaceOverrides: [String: WorkspaceOverride]
+    /// `[workspace-to-monitor-force-assignment]`: workspace -> patterns tried in order.
+    public var workspaceMonitors: [String: [MonitorPattern]]
     /// mode -> binding ("alt-shift-h") -> actions run in order.
     public var modes: [String: [String: [Action]]]
 
@@ -175,6 +177,18 @@ public struct Settings: Equatable, Sendable {
                                                 defaultLayout: raw.defaultLayout)
         }
 
+        var workspaceMonitors: [String: [MonitorPattern]] = [:]
+        for (name, raw) in user.workspaceToMonitorForceAssignment ?? [:] {
+            guard workspaces.contains(name) else {
+                throw ConfigError(description: "workspace '\(name)' in [workspace-to-monitor-force-assignment] is not in workspaces")
+            }
+            workspaceMonitors[name] = try raw.values.map { value in
+                do { return try monitorPattern(value) } catch let error as ConfigError {
+                    throw ConfigError(description: "workspace \(name) in [workspace-to-monitor-force-assignment]: \(error)")
+                }
+            }
+        }
+
         let duration = user.animationDuration ?? base.animationDuration!
         let width = user.borderWidth ?? base.borderWidth!
         let radius = user.borderRadius ?? base.borderRadius!
@@ -224,7 +238,24 @@ public struct Settings: Equatable, Sendable {
             reuseWindowApps: Set(user.reuseWindowApps ?? base.reuseWindowApps!),
             windowRules: windowRules,
             workspaceOverrides: overrides,
+            workspaceMonitors: workspaceMonitors,
             modes: modes)
+    }
+}
+
+private func monitorPattern(_ value: RawPatterns.Value) throws -> MonitorPattern {
+    switch value {
+    case .index(let n):
+        guard n >= 1 else { throw ConfigError(description: "monitor numbers start at 1") }
+        return .index(n)
+    case .text(let text):
+        switch text.lowercased() {
+        case "main": return .main
+        case "secondary": return .secondary
+        default:
+            guard (try? NSRegularExpression(pattern: text)) != nil else { throw ConfigError(description: "bad regex '\(text)'") }
+            return .name(text)
+        }
     }
 }
 
@@ -256,11 +287,13 @@ private struct RawConfig: Decodable {
     var reuseWindowApps: [String]?
     var onWindowDetected: [RawRule]?
     var workspace: [String: RawWorkspace]?
+    var workspaceToMonitorForceAssignment: [String: RawPatterns]?
     var mode: [String: RawMode]?
 
     enum CodingKeys: String, CodingKey {
         case workspaces, workspace, mode
         case onWindowDetected = "on-window-detected"
+        case workspaceToMonitorForceAssignment = "workspace-to-monitor-force-assignment"
         case gapsInner = "gaps-inner", gapsOuter = "gaps-outer", accordionPadding = "accordion-padding"
         case smartGaps = "smart-gaps", smartBorder = "smart-border"
         case defaultLayout = "default-layout", dwindleSplitRatio = "dwindle-split-ratio"
@@ -318,6 +351,32 @@ private struct RawCondition: Decodable {
 
 private struct RawMode: Decodable {
     var binding: [String: Commands]
+}
+
+/// A force-assignment value: a monitor number or a name pattern, or a list of them tried in order.
+private struct RawPatterns: Decodable {
+    enum Value: Decodable {
+        case index(Int)
+        case text(String)
+
+        init(from decoder: Decoder) throws {
+            // A failed decode still moves an unkeyed container on, so each element gets its own.
+            let single = try decoder.singleValueContainer()
+            if let n = try? single.decode(Int.self) { self = .index(n) } else { self = .text(try single.decode(String.self)) }
+        }
+    }
+
+    var values: [Value]
+
+    init(from decoder: Decoder) throws {
+        // TOMLDecoder can't open a single-value container on an array, so try the list first.
+        if var list = try? decoder.unkeyedContainer() {
+            values = []
+            while !list.isAtEnd { values.append(try list.decode(Value.self)) }
+        } else {
+            values = [try Value(from: decoder)]
+        }
+    }
 }
 
 /// A binding's value: one command or a list run in order.
