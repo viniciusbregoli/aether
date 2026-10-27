@@ -43,9 +43,34 @@ private let window = CGSize(width: 800, height: 600)
 
 @Test func hiddenWorkspacesOpenWhereTheyWereLastShown() {
     #expect(homeMonitor(lastShownOn: 2, monitors: [1, 2], main: 1) == 2)
+    #expect(homeMonitor(forced: 1, lastShownOn: 2, monitors: [1, 2], main: 2) == 1)
     // Never shown, or shown on a monitor that is gone: the main one.
     #expect(homeMonitor(lastShownOn: nil, monitors: [1, 2], main: 1) == 1)
     #expect(homeMonitor(lastShownOn: 3, monitors: [1, 2], main: 1) == 1)
+}
+
+@Test func forcePatternsPickTheFirstConnectedMatch() {
+    // The Dell is main and on the left, the laptop on the right.
+    let monitors: [(id: UInt32, name: String)] = [(2, "DELL S2421HN"), (1, "Built-in Retina Display")]
+    #expect(forcedMonitor([.main], monitors: monitors, main: 2) == 2)
+    #expect(forcedMonitor([.secondary], monitors: monitors, main: 2) == 1)
+    #expect(forcedMonitor([.index(2)], monitors: monitors, main: 2) == 1)
+    #expect(forcedMonitor([.name("^built-in")], monitors: monitors, main: 2) == 1)
+    // Patterns that match nothing connected fall through to the next one, then to none.
+    #expect(forcedMonitor([.name("lg"), .index(3), .name("dell")], monitors: monitors, main: 2) == 2)
+    #expect(forcedMonitor([.name("lg")], monitors: monitors, main: 2) == nil)
+    // Secondary only means something with exactly two monitors.
+    #expect(forcedMonitor([.secondary], monitors: [(2, "DELL")], main: 2) == nil)
+}
+
+@Test func forcedWorkspacesOnlyShowOnTheirMonitor() {
+    // A kept workspace forced elsewhere gives way, and a new monitor skips workspaces forced away.
+    #expect(assignWorkspaces(monitors: [1, 2], kept: [1: 0, 2: 1], focused: 1, focusedMonitor: 2, count: 9, occupied: [0, 1],
+                             forced: [0: 2, 1: 2, 2: 2])
+        == [2: 1, 1: 3])
+    // The focused workspace goes to its forced monitor, not the focused one.
+    #expect(assignWorkspaces(monitors: [1, 2], kept: [:], focused: 0, focusedMonitor: 1, count: 9, occupied: [], forced: [0: 2])
+        == [2: 0, 1: 1])
 }
 
 @Test func parkingHangsOffACornerNoOtherMonitorSees() {

@@ -141,6 +141,28 @@ import Testing
     #expect(try Settings.parse(defaultConfig).workspaceOverrides.isEmpty)
 }
 
+@Test func parsesWorkspaceToMonitorForceAssignment() throws {
+    let settings = try Settings.parse("""
+    [workspace-to-monitor-force-assignment]
+        1 = 'main'
+        2 = 2
+        3 = ['Secondary', 'dell']
+        A = 'built-in'
+    """)
+    #expect(settings.workspaceMonitors == [
+        "1": [.main], "2": [.index(2)], "3": [.secondary, .name("dell")], "A": [.name("built-in")],
+    ])
+    #expect(try Settings.parse(defaultConfig).workspaceMonitors.isEmpty)
+}
+
+@Test(arguments: [
+    "[workspace-to-monitor-force-assignment]\n    nope = 'main'",
+    "[workspace-to-monitor-force-assignment]\n    1 = 0",
+    "[workspace-to-monitor-force-assignment]\n    1 = '('",
+]) func invalidForceAssignmentsAreReported(_ toml: String) {
+    #expect(throws: ConfigError.self) { try Settings.parse(toml) }
+}
+
 @Test func effectiveValuesFallBackToGlobalKeys() throws {
     let settings = try Settings.parse("""
     gaps-inner = 8
