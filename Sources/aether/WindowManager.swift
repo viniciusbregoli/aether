@@ -247,6 +247,8 @@ final class WindowManager {
                 }
                 if (element.get("AXFullScreen") as Bool?) == true {
                     nativeFullscreen.insert(id)
+                    // A glide still running would keep writing frames to the fullscreen window.
+                    animator.cancel(id)
                 } else if nativeFullscreen.remove(id) != nil {
                     exitedFullscreen.insert(id)
                 }
@@ -263,12 +265,16 @@ final class WindowManager {
         // sight, not closed.
         let missing = windows.filter { alive[$0.key] == nil && running.contains($0.value.pid) && !excludedAll.contains($0.key) }
         alive.merge(missing.filter { id, window in
-            if isOnSomeSpace(id) { return true }
-            // Missing because it is on its way into a fullscreen Space, before any scan saw it there.
-            let entering = (window.ax.get("AXFullScreen") as Bool?) == true
-            guard keepsMissingWindow(onSomeSpace: false, inNativeFullscreen: nativeFullscreen.contains(id) || entering,
+            // A missing window may be on a fullscreen Space no scan has seen it enter yet.
+            let isFullscreen = window.ax.get("AXFullScreen") as Bool?
+            let onSomeSpace = isOnSomeSpace(id)
+            if onSomeSpace, isFullscreen == false {
+                if nativeFullscreen.remove(id) != nil { exitedFullscreen.insert(id) }
+                return true
+            }
+            guard keepsMissingWindow(onSomeSpace: onSomeSpace, inNativeFullscreen: nativeFullscreen.contains(id) || isFullscreen == true,
                                      elementAlive: (window.ax.get(kAXRoleAttribute) as String?) != nil) else { return false }
-            nativeFullscreen.insert(id)
+            if isFullscreen == true, nativeFullscreen.insert(id).inserted { animator.cancel(id) }
             return true
         }) { fresh, _ in fresh }
         // Locking may have started while an app was answering the AX requests above.
