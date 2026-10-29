@@ -783,13 +783,14 @@ final class WindowManager {
     }
 
     /// A workspace shown on another monitor just takes focus there; a hidden one replaces the
-    /// workspace on its home monitor, and focus moves there.
+    /// workspace on its pinned monitor, else on the main one, and focus moves there. Where it was
+    /// last shown doesn't count: a workspace once opened on the laptop screen would keep going there.
     private func switchTo(_ ws: Int, focusing target: CGWindowID? = nil) {
         guard ws != current, workspaces.indices.contains(ws) else { return }
         let slide: CGFloat = ws > current ? 1 : -1
         let visible = shown.values.contains(ws)
         if !visible, let main = mainMonitorId {
-            shown[homeMonitor(forced: forcedMonitor(of: ws), lastShownOn: lastMonitor[ws], monitors: monitors.map(\.id), main: main)] = ws
+            shown[forcedMonitor(of: ws) ?? main] = ws
         }
         previous = current
         current = ws

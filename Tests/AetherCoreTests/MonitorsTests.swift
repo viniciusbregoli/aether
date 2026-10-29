@@ -41,14 +41,6 @@ private let window = CGSize(width: 800, height: 600)
     #expect(assignWorkspaces(monitors: [1, 2], kept: [:], focused: 0, focusedMonitor: 1, count: 1, occupied: []) == [1: 0])
 }
 
-@Test func hiddenWorkspacesOpenWhereTheyWereLastShown() {
-    #expect(homeMonitor(lastShownOn: 2, monitors: [1, 2], main: 1) == 2)
-    #expect(homeMonitor(forced: 1, lastShownOn: 2, monitors: [1, 2], main: 2) == 1)
-    // Never shown, or shown on a monitor that is gone: the main one.
-    #expect(homeMonitor(lastShownOn: nil, monitors: [1, 2], main: 1) == 1)
-    #expect(homeMonitor(lastShownOn: 3, monitors: [1, 2], main: 1) == 1)
-}
-
 @Test func forcePatternsPickTheFirstConnectedMatch() {
     // The Dell is main and on the left, the laptop on the right.
     let monitors: [(id: UInt32, name: String)] = [(2, "DELL S2421HN"), (1, "Built-in Retina Display")]
