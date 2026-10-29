@@ -134,6 +134,13 @@ final class WindowManager {
             if let id = element.windowId, id == borderTarget, !animator.isAnimating(id) { updateBorder() }
         case kAXFocusedWindowChangedNotification:
             scheduleRefresh(followFocus: true)
+        case kAXUIElementDestroyedNotification:
+            // A closed window stays on its Space through its close animation (about 0.3s), so the
+            // scan right away still keeps it and its tile stays empty. Look again once it is gone.
+            scheduleRefresh()
+            for delay in [0.45, 1.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in scheduleRefresh() }
+            }
         default:
             scheduleRefresh()
         }
