@@ -28,9 +28,12 @@ final class WindowManager {
     private var ratios: [Int: [CGFloat]] = [:]
     private var scrollOffsets: [Int: CGFloat] = [:]
     private var fullscreen: Set<CGWindowID> = []
-    /// Windows on a native fullscreen Space, and the workspace slot they left.
-    private var fullscreenHomes: [CGWindowID: FullscreenHome] = [:]
-    private var returnFocusHold = FocusHold()
+    /// Windows on a native fullscreen Space. Like AeroSpace and rift, they stay in their workspace
+    /// so they can't be lost or reassigned on the way out; layout just leaves them alone. Focusing
+    /// one brings its Space back, which is how switching to its workspace returns to it.
+    private var nativeFullscreen: Set<CGWindowID> = []
+    /// Windows that just left native fullscreen: macOS still moves and focuses them for a moment.
+    private var leftFullscreen = FocusHold()
     private var floating: Set<CGWindowID> = []
     private var parked: Set<CGWindowID> = []
     private var floatingFrames: [CGWindowID: CGRect] = [:]
@@ -93,7 +96,9 @@ final class WindowManager {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in scheduleRefresh() }
             }
         }
-        for name in [NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didHideApplicationNotification, NSWorkspace.didUnhideApplicationNotification] {
+        // Entering and leaving native fullscreen switch Spaces, often without any AX notification.
+        for name in [NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didHideApplicationNotification,
+                     NSWorkspace.didUnhideApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in scheduleRefresh() }
         }
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification,
@@ -131,7 +136,13 @@ final class WindowManager {
     fileprivate func handle(_ notification: String, _ element: AXUIElement) {
         switch notification {
         case kAXMovedNotification, kAXResizedNotification:
-            if let id = element.windowId, id == borderTarget, !animator.isAnimating(id) { updateBorder() }
+            guard let id = element.windowId, !animator.isAnimating(id) else { return }
+            if id == borderTarget { updateBorder() }
+            // macOS puts a window back at its old frame once the fullscreen exit animation ends,
+            // which can be after aether parked it because the user switched workspaces meanwhile.
+            if nativeFullscreen.contains(id) || leftFullscreen.isHeld(id, at: ProcessInfo.processInfo.systemUptime) {
+                scheduleRefresh()
+            }
         case kAXFocusedWindowChangedNotification:
             scheduleRefresh(followFocus: true)
         default:
@@ -186,7 +197,9 @@ final class WindowManager {
         }
         // Every shown workspace, so hovering a window on another monitor focuses it and refresh
         // makes that monitor's workspace current.
-        let focusable = Set(shown.values.flatMap { workspaces[$0] }.filter { !parked.contains($0) && !animator.isAnimating($0) })
+        let focusable = Set(shown.values.flatMap { workspaces[$0] }.filter {
+            !parked.contains($0) && !nativeFullscreen.contains($0) && !animator.isAnimating($0)
+        })
         // borderTarget usually answers "already focused" without an AX round trip; smart-border
         // hides it on a lone window, so confirm with focusedId before focusing again.
         guard let id = windowUnderPointer(point, in: stack, ownPid: getpid(), focusable: focusable, focused: borderTarget),
@@ -211,6 +224,7 @@ final class WindowManager {
         var running: Set<pid_t> = []
         var incompleteApps: Set<String> = []
         var excludedAll: Set<CGWindowID> = []
+        var exitedFullscreen: Set<CGWindowID> = []
         for app in NSWorkspace.shared.runningApplications
         where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != getpid() {
             let pid = app.processIdentifier
@@ -228,11 +242,12 @@ final class WindowManager {
                 }
                 guard manageable else {
                     excluded.insert(id)
-                    if let home = fullscreenHome(of: id, in: workspaces, floating: floating.contains(id)),
-                       (element.get("AXFullScreen") as Bool?) == true {
-                        fullscreenHomes[id] = home
-                    }
                     continue
+                }
+                if (element.get("AXFullScreen") as Bool?) == true {
+                    nativeFullscreen.insert(id)
+                } else if nativeFullscreen.remove(id) != nil {
+                    exitedFullscreen.insert(id)
                 }
                 discovered[id] = windows[id] ?? register(Window(id: id, pid: pid, bundleId: app.bundleIdentifier ?? "", ax: element))
             }
@@ -246,11 +261,15 @@ final class WindowManager {
         // Space it briefly lists none. A missing window that still sits on some Space is out of
         // sight, not closed.
         let missing = windows.filter { alive[$0.key] == nil && running.contains($0.value.pid) && !excludedAll.contains($0.key) }
-        alive.merge(missing.filter { isOnSomeSpace($0.key) }) { fresh, _ in fresh }
-        // A window closed while in native fullscreen is on no Space.
-        for id in fullscreenHomes.keys where !excludedAll.contains(id) && alive[id] == nil && !isOnSomeSpace(id) {
-            fullscreenHomes[id] = nil
-        }
+        alive.merge(missing.filter { id, window in
+            if isOnSomeSpace(id) { return true }
+            // Missing because it is on its way into a fullscreen Space, before any scan saw it there.
+            let entering = (window.ax.get("AXFullScreen") as Bool?) == true
+            guard keepsMissingWindow(onSomeSpace: false, inNativeFullscreen: nativeFullscreen.contains(id) || entering,
+                                     elementAlive: (window.ax.get(kAXRoleAttribute) as String?) != nil) else { return false }
+            nativeFullscreen.insert(id)
+            return true
+        }) { fresh, _ in fresh }
         // Locking may have started while an app was answering the AX requests above.
         guard !isScreenLocked else { return }
         retryUnsettled(incompleteApps)
@@ -264,19 +283,13 @@ final class WindowManager {
         parked.subtract(gone)
         floating.subtract(gone)
         fullscreen.subtract(gone)
+        nativeFullscreen.subtract(gone)
         for id in gone {
             animator.cancel(id)
             reportedFrames[id] = nil
         }
-        // Back from native fullscreen: its old slot, even if the user switched workspaces while
-        // macOS was still animating it out.
         let now = ProcessInfo.processInfo.systemUptime
-        for (id, home) in fullscreenHomes where alive[id] != nil {
-            fullscreenHomes[id] = nil
-            returnFromFullscreen(id, to: home, in: &workspaces)
-            if home.floating { floating.insert(id) }
-            if !shown.values.contains(home.workspace) { returnFocusHold.hold(id, until: now + 1) }
-        }
+        for id in exitedFullscreen { leftFullscreen.hold(id, until: now + 1.5) }
 
         if let saved = pendingRestore {
             let started = restoreStarted ?? CACurrentMediaTime()
@@ -296,7 +309,7 @@ final class WindowManager {
         // New windows a rule sent to another workspace, and windows back from native fullscreen on
         // a hidden one: focus must not drag the user there.
         var ruleMoved: Set<CGWindowID> = []
-        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), returnFocusHold.isHeld(focused, at: now) {
+        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), leftFullscreen.isHeld(focused, at: now) {
             ruleMoved.insert(focused)
         }
         // Windows of an app still being restored wait for their saved slot instead of landing here.
@@ -421,7 +434,7 @@ final class WindowManager {
         guard let subrole: String = element.get(kAXSubroleAttribute) else { return nil }
         guard subrole == kAXStandardWindowSubrole else { return false }
         guard let minimized: Bool = element.get(kAXMinimizedAttribute, ifUnsupported: false) else { return nil }
-        return !minimized && (element.get("AXFullScreen") as Bool?) != true
+        return !minimized
     }
 
     private var focusedId: CGWindowID? {
@@ -437,7 +450,7 @@ final class WindowManager {
 
     /// A window dropped on another monitor joins the workspace shown there, and focus follows it.
     private func adoptDragged(_ id: CGWindowID) {
-        guard let from = workspace(of: id), shown.values.contains(from), !animator.isAnimating(id),
+        guard let from = workspace(of: id), shown.values.contains(from), !animator.isAnimating(id), !nativeFullscreen.contains(id),
               let frame = windows[id]?.frame,
               let target = monitors.first(where: { $0.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
               let to = shown[target.id], to != from else { return }
@@ -514,7 +527,7 @@ final class WindowManager {
     private var screenRect: CGRect { screen(current) }
 
     private func tiled(in ws: Int) -> [CGWindowID] {
-        workspaces[ws].filter { !floating.contains($0) }
+        workspaces[ws].filter { !floating.contains($0) && !nativeFullscreen.contains($0) }
     }
 
     private var tiled: [CGWindowID] { tiled(in: current) }
@@ -582,7 +595,8 @@ final class WindowManager {
         let screens = monitors.map(\.visible)
         for (i, ws) in workspaces.enumerated() where !shown.values.contains(i) {
             let home = monitors.first { $0.id == lastMonitor[i] } ?? focusedMonitor
-            for id in ws {
+            // A window on a fullscreen Space is out of sight already, and moving it would undo its fullscreen.
+            for id in ws where !nativeFullscreen.contains(id) {
                 guard let window = windows[id] else { continue }
                 if parked.contains(id) {
                     let frame = window.frame
@@ -638,7 +652,7 @@ final class WindowManager {
     }
 
     private func updateBorder() {
-        guard let id = focusedId, workspace(of: id) == current, !parked.contains(id),
+        guard let id = focusedId, workspace(of: id) == current, !parked.contains(id), !nativeFullscreen.contains(id),
               !(config.smartBorder && tiled == [id]), let frame = windows[id]?.frame else {
             borderTarget = nil
             return border.hide()
@@ -651,7 +665,7 @@ final class WindowManager {
     private func updateDim() {
         guard config.dimInactive > 0, !isScreenLocked else { return dimmer.hideAll() }
         var frames: [CGWindowID: CGRect] = [:]
-        for id in dimTargets(in: shown.values.flatMap { workspaces[$0] }, focused: borderTarget, parked: parked) {
+        for id in dimTargets(in: shown.values.flatMap { workspaces[$0] }, focused: borderTarget, parked: parked.union(nativeFullscreen)) {
             let frame = animator.isAnimating(id) ? reportedFrames[id] : windows[id]?.frame
             if let frame { frames[id] = frame }
         }
