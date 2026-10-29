@@ -63,6 +63,7 @@ final class WindowManager {
     private let border = Border()
     private let dimmer = Dimmer()
     private let tray = Tray()
+    private let anchor = Anchor()
     /// Cached so per-frame border updates don't cost AX round trips.
     private var borderTarget: CGWindowID?
     /// Last frame the animator reported per window, so overlays of moving windows need no AX reads.
@@ -811,12 +812,13 @@ final class WindowManager {
         focus(windowToFocus(in: workspaces[ws], preferred: target, remembered: lastFocus[ws]))
     }
 
-    /// With nothing to focus, aether takes focus itself so keys don't go to a parked window.
+    /// With nothing to focus, aether takes focus itself so keys don't go to a parked window, and
+    /// macOS leaves a native fullscreen Space for the desktop.
     private func focus(_ id: CGWindowID?) {
         if let window = id.flatMap({ windows[$0] }) {
             window.focus()
         } else {
-            NSApp.activate()
+            anchor.focus()
         }
     }
 
