@@ -146,6 +146,10 @@ Switch with `layout dwindle`, `layout accordion`, `layout master` or `layout scr
 
 Columns outside the screen keep their position on the strip. macOS may refuse to put a window fully off-screen and clamp it to the screen edge, so those columns can peek in at the sides until they are scrolled to.
 
+### Native fullscreen
+
+A window in macOS fullscreen (the green button, or a video gone fullscreen) keeps its place in its workspace, as in AeroSpace. aether leaves it out of the layout while it is fullscreen, and switching to its workspace focuses it, which brings its fullscreen Space back. Switching away goes to the desktop even when the target workspace is empty. When the window leaves fullscreen it goes back to its workspace, also if you switched to another one during the exit animation.
+
 ### Multiple monitors
 
 Each monitor shows one workspace, the AeroSpace way. Every workspace belongs to the monitor it was last shown on, or to the main monitor (the one with the menu bar) before it is ever shown or when its monitor is disconnected. `workspace <name>` shows the workspace on that monitor, replacing the one there, and moves focus to it; a workspace already shown just takes focus. Hidden workspaces forget their monitor when aether restarts. A monitor that gets connected shows the first empty workspace, one that goes away takes its workspace into hiding, and the monitor assignments are saved with the layout.
@@ -203,6 +207,8 @@ Unknown commands print an error and exit with status 1, and so does any call whi
 ## Limitations
 
 - Windows found when aether starts without saved state all go to the focused workspace, whatever monitor they are on.
+- Switching from a macOS fullscreen window to an empty workspace leaves its fullscreen Space only on the main monitor, where aether's anchor window lives; on another monitor the fullscreen window stays in front.
+- A window that is already in macOS fullscreen when aether starts is only seen once you visit its Space, since the Accessibility API only lists windows of the Spaces on screen.
 - Effects on other apps' windows (rounded corners, blur, transparency) need SIP partly disabled, so aether doesn't do them.
 - A window's own child windows (sheets, attached popovers) are in the same stack group, so an inactive window's overlay is drawn over them too.
 - Opening an app on a workspace where it has no windows sends it cmd-N, so Cmd-Tab to such an app also opens a window, and apps where cmd-N means something else get that action.
