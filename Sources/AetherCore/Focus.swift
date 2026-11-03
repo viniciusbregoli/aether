@@ -64,5 +64,5 @@ public func isSwitchSettling(at now: Double, switchedAt: Double?) -> Bool {
 /// a message instead, so aether must not press it. Titles are localized, hence the word list.
 public func isNewWindowItem(title: String) -> Bool {
     let lowered = title.lowercased()
-    return ["window", "janela"].contains { lowered.contains($0) }
+    return ["window", "janela", "ventana", "fenêtre", "fenster", "finestra", "venster"].contains { lowered.contains($0) }
 }
