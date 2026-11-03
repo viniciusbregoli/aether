@@ -62,4 +62,6 @@ import Testing
     #expect(!isNewWindowItem(title: "\u{200E}New Chat"))
     #expect(!isNewWindowItem(title: "Nova mensagem"))
     #expect(!isNewWindowItem(title: "New Note"))
+    #expect(!isNewWindowItem(title: "Close Window"))
+    #expect(!isNewWindowItem(title: "Fenster schließen"))
 }
