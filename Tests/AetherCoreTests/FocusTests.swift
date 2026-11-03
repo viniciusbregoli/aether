@@ -44,3 +44,19 @@ import Testing
     #expect(dimTargets(in: [1, 2], focused: 9, parked: []) == [])
     #expect(dimTargets(in: [], focused: 1, parked: []) == [])
 }
+
+@Test func focusRightAfterASwitchIsTheSwitchsFallout() {
+    #expect(isSwitchSettling(at: 10.2, switchedAt: 10))
+    #expect(!isSwitchSettling(at: 10 + switchSettleSeconds, switchedAt: 10))
+    #expect(!isSwitchSettling(at: 10, switchedAt: nil))
+}
+
+@Test func onlyWindowMenuItemsCountAsNewWindow() {
+    #expect(isNewWindowItem(title: "New Window"))
+    #expect(isNewWindowItem(title: "New Finder Window"))
+    #expect(isNewWindowItem(title: "New Window with Profile - Basic"))
+    #expect(isNewWindowItem(title: "Nova Janela"))
+    #expect(!isNewWindowItem(title: "\u{200E}New Chat"))
+    #expect(!isNewWindowItem(title: "Nova mensagem"))
+    #expect(!isNewWindowItem(title: "New Note"))
+}
