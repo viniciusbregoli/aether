@@ -48,3 +48,24 @@ public func windowUnderPointer(_ point: CGPoint, in stack: [ScreenWindow], ownPi
           top.layer == 0, focusable.contains(top.id), top.id != focused else { return nil }
     return top.id
 }
+
+/// How long after a workspace switch focus that lands on a hidden workspace is the switch's own
+/// fallout. The activation of the app aether focused can be reported after the user already
+/// switched again, and macOS hands focus to the app below when the destination is empty. Following
+/// either drags the user back, or asks the app for a new window here.
+public let switchSettleSeconds = 0.5
+
+public func isSwitchSettling(at now: Double, switchedAt: Double?) -> Bool {
+    guard let switchedAt else { return false }
+    return now - switchedAt < switchSettleSeconds
+}
+
+/// Whether a cmd-N menu item opens a window. In apps like WhatsApp or Slack cmd-N starts a chat or
+/// a message instead, so aether must not press it. Titles are localized, hence the word lists. Both
+/// words are needed, since a user can bind cmd-N to something like "Close Window".
+public func isNewWindowItem(title: String) -> Bool {
+    let lowered = title.lowercased()
+    let new = ["new", "nov", "nuev", "nouv", "neu", "nuov", "nieuw"]
+    let window = ["window", "janela", "ventana", "fenêtre", "fenster", "finestra", "venster"]
+    return new.contains { lowered.contains($0) } && window.contains { lowered.contains($0) }
+}

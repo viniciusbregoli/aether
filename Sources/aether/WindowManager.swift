@@ -14,6 +14,8 @@ final class WindowManager {
     /// The focused workspace, which is always shown on some monitor.
     private var current = 0
     private var previous: Int?
+    /// Uptime of the last workspace switch, see `isSwitchSettling`.
+    private var switchedAt: Double?
     /// Monitors left to right, and the workspace each one shows.
     private var monitors: [Monitor] = []
     private var shown: [CGDirectDisplayID: Int] = [:]
@@ -50,6 +52,8 @@ final class WindowManager {
     private var activatedPid: pid_t?
     /// cmd-N sent to this app for this workspace, until its window shows up or the fallback runs.
     private var pendingNewWindow: (pid: pid_t, workspace: Int)?
+    /// `cmdNOpensWindow` per app, since walking a menu bar takes up to a few hundred ms.
+    private var cmdNOpensWindowCache: [pid_t: Bool] = [:]
     private var mode = "main"
     private var pendingRestore: SavedState?
     /// Saved entries (indices into the saved list) still waiting on apps that haven't answered.
@@ -290,6 +294,7 @@ final class WindowManager {
         for pid in observers.keys where !running.contains(pid) {
             observers[pid] = nil
             refusedNotifications[pid] = nil
+            cmdNOpensWindowCache[pid] = nil
         }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -320,10 +325,11 @@ final class WindowManager {
         }
 
         let focused = focusedId
-        // New windows a rule sent to another workspace, and windows back from native fullscreen on
-        // a hidden one: focus must not drag the user there.
+        // New windows a rule sent to another workspace, windows back from native fullscreen on a
+        // hidden one, and focus left over from a workspace switch: focus must not drag the user there.
         var ruleMoved: Set<CGWindowID> = []
-        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), leftFullscreen.isHeld(focused, at: now) {
+        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws),
+           leftFullscreen.isHeld(focused, at: now) || isSwitchSettling(at: now, switchedAt: switchedAt) {
             ruleMoved.insert(focused)
         }
         // Windows of an app still being restored wait for their saved slot instead of landing here.
@@ -355,7 +361,7 @@ final class WindowManager {
             if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
                 // The app refocused its old window while we wait for the one we asked for: stay here.
             } else if let pid, pid == activated, !shown.values.contains(ws), !config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
-               !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
+               !workspaces[current].contains(where: { windows[$0]?.pid == pid }), opensWindowOnCmdN(pid) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
                 // for a new window here. Apps that ignore cmd-N fall back to jumping to their window,
                 // unless the user has already moved on.
@@ -379,6 +385,14 @@ final class WindowManager {
         layout()
         // The app focused its new window, which is now parked.
         if let focused, ruleMoved.contains(focused) { focus(windowToFocus(in: workspaces[current], remembered: lastFocus[current])) }
+    }
+
+    private func opensWindowOnCmdN(_ pid: pid_t) -> Bool {
+        if let known = cmdNOpensWindowCache[pid] { return known }
+        // An unreadable menu bar isn't cached; this time the app just jumps to its window.
+        guard let opens = cmdNOpensWindow(pid) else { return false }
+        cmdNOpensWindowCache[pid] = opens
+        return opens
     }
 
     /// A window that is still being set up (no subrole yet, say) is skipped by a scan, and nothing
@@ -822,6 +836,7 @@ final class WindowManager {
         }
         previous = current
         current = ws
+        switchedAt = ProcessInfo.processInfo.systemUptime
         layout(slide: visible ? 0 : slide)
         focus(windowToFocus(in: workspaces[ws], preferred: target, remembered: lastFocus[ws]))
     }
