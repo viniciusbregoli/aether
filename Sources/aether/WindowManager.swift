@@ -14,6 +14,8 @@ final class WindowManager {
     /// The focused workspace, which is always shown on some monitor.
     private var current = 0
     private var previous: Int?
+    /// Uptime of the last workspace switch, see `isSwitchSettling`.
+    private var switchedAt: Double?
     /// Monitors left to right, and the workspace each one shows.
     private var monitors: [Monitor] = []
     private var shown: [CGDirectDisplayID: Int] = [:]
@@ -320,10 +322,11 @@ final class WindowManager {
         }
 
         let focused = focusedId
-        // New windows a rule sent to another workspace, and windows back from native fullscreen on
-        // a hidden one: focus must not drag the user there.
+        // New windows a rule sent to another workspace, windows back from native fullscreen on a
+        // hidden one, and focus left over from a workspace switch: focus must not drag the user there.
         var ruleMoved: Set<CGWindowID> = []
-        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws), leftFullscreen.isHeld(focused, at: now) {
+        if let focused, let ws = workspace(of: focused), !shown.values.contains(ws),
+           leftFullscreen.isHeld(focused, at: now) || isSwitchSettling(at: now, switchedAt: switchedAt) {
             ruleMoved.insert(focused)
         }
         // Windows of an app still being restored wait for their saved slot instead of landing here.
@@ -822,6 +825,7 @@ final class WindowManager {
         }
         previous = current
         current = ws
+        switchedAt = ProcessInfo.processInfo.systemUptime
         layout(slide: visible ? 0 : slide)
         focus(windowToFocus(in: workspaces[ws], preferred: target, remembered: lastFocus[ws]))
     }
