@@ -389,7 +389,8 @@ final class WindowManager {
 
     private func opensWindowOnCmdN(_ pid: pid_t) -> Bool {
         if let known = cmdNOpensWindowCache[pid] { return known }
-        let opens = cmdNOpensWindow(pid)
+        // An unreadable menu bar isn't cached; this time the app just jumps to its window.
+        guard let opens = cmdNOpensWindow(pid) else { return false }
         cmdNOpensWindowCache[pid] = opens
         return opens
     }

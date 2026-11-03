@@ -102,10 +102,16 @@ final class Window {
 }
 
 /// Whether the app's cmd-N menu item opens a window. Looks one submenu deep, where Terminal keeps
-/// its "New Window with Profile" item.
-func cmdNOpensWindow(_ pid: pid_t) -> Bool {
+/// its "New Window with Profile" item. Nil when a menu couldn't be read (the app is busy, say) and
+/// no cmd-N item turned up, so the caller can ask again later instead of remembering a guess.
+func cmdNOpensWindow(_ pid: pid_t) -> Bool? {
+    var unreadable = false
     func search(_ menu: AXUIElement, depth: Int) -> Bool? {
-        for item: AXUIElement in menu.get(kAXChildrenAttribute) ?? [] {
+        guard let items: [AXUIElement] = menu.get(kAXChildrenAttribute) else {
+            unreadable = true
+            return nil
+        }
+        for item in items {
             let char: String? = item.get(kAXMenuItemCmdCharAttribute)
             let modifiers: Int? = item.get(kAXMenuItemCmdModifiersAttribute)
             if char?.uppercased() == "N", modifiers == 0 { // 0 is command alone
@@ -118,12 +124,16 @@ func cmdNOpensWindow(_ pid: pid_t) -> Bool {
         }
         return nil
     }
-    guard let bar: AXUIElement = AXUIElementCreateApplication(pid).get(kAXMenuBarAttribute) else { return false }
-    for top: AXUIElement in bar.get(kAXChildrenAttribute) ?? [] {
-        guard let menu = (top.get(kAXChildrenAttribute) as [AXUIElement]?)?.first else { continue }
+    guard let bar: AXUIElement = AXUIElementCreateApplication(pid).get(kAXMenuBarAttribute),
+          let tops: [AXUIElement] = bar.get(kAXChildrenAttribute) else { return nil }
+    for top in tops {
+        guard let menu = (top.get(kAXChildrenAttribute) as [AXUIElement]?)?.first else {
+            unreadable = true
+            continue
+        }
         if let found = search(menu, depth: 1) { return found }
     }
-    return false
+    return unreadable ? nil : false
 }
 
 /// Sends cmd-N to an app, which is "new window" in most of them.
