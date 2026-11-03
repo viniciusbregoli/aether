@@ -60,3 +60,9 @@ public func isSwitchSettling(at now: Double, switchedAt: Double?) -> Bool {
     return now - switchedAt < switchSettleSeconds
 }
 
+/// Whether a cmd-N menu item opens a window. In apps like WhatsApp or Slack cmd-N starts a chat or
+/// a message instead, so aether must not press it. Titles are localized, hence the word list.
+public func isNewWindowItem(title: String) -> Bool {
+    let lowered = title.lowercased()
+    return ["window", "janela"].contains { lowered.contains($0) }
+}

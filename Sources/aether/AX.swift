@@ -101,6 +101,31 @@ final class Window {
     }
 }
 
+/// Whether the app's cmd-N menu item opens a window. Looks one submenu deep, where Terminal keeps
+/// its "New Window with Profile" item.
+func cmdNOpensWindow(_ pid: pid_t) -> Bool {
+    func search(_ menu: AXUIElement, depth: Int) -> Bool? {
+        for item: AXUIElement in menu.get(kAXChildrenAttribute) ?? [] {
+            let char: String? = item.get(kAXMenuItemCmdCharAttribute)
+            let modifiers: Int? = item.get(kAXMenuItemCmdModifiersAttribute)
+            if char?.uppercased() == "N", modifiers == 0 { // 0 is command alone
+                return isNewWindowItem(title: item.get(kAXTitleAttribute) ?? "")
+            }
+            if depth > 0, let submenu = (item.get(kAXChildrenAttribute) as [AXUIElement]?)?.first,
+               let found = search(submenu, depth: depth - 1) {
+                return found
+            }
+        }
+        return nil
+    }
+    guard let bar: AXUIElement = AXUIElementCreateApplication(pid).get(kAXMenuBarAttribute) else { return false }
+    for top: AXUIElement in bar.get(kAXChildrenAttribute) ?? [] {
+        guard let menu = (top.get(kAXChildrenAttribute) as [AXUIElement]?)?.first else { continue }
+        if let found = search(menu, depth: 1) { return found }
+    }
+    return false
+}
+
 /// Sends cmd-N to an app, which is "new window" in most of them.
 func requestNewWindow(_ pid: pid_t) {
     for keyDown in [true, false] {

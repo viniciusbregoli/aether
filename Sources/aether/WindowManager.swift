@@ -52,6 +52,8 @@ final class WindowManager {
     private var activatedPid: pid_t?
     /// cmd-N sent to this app for this workspace, until its window shows up or the fallback runs.
     private var pendingNewWindow: (pid: pid_t, workspace: Int)?
+    /// `cmdNOpensWindow` per app, since walking a menu bar takes up to a few hundred ms.
+    private var cmdNOpensWindowCache: [pid_t: Bool] = [:]
     private var mode = "main"
     private var pendingRestore: SavedState?
     /// Saved entries (indices into the saved list) still waiting on apps that haven't answered.
@@ -292,6 +294,7 @@ final class WindowManager {
         for pid in observers.keys where !running.contains(pid) {
             observers[pid] = nil
             refusedNotifications[pid] = nil
+            cmdNOpensWindowCache[pid] = nil
         }
 
         let gone = Set(windows.keys).subtracting(alive.keys)
@@ -358,7 +361,7 @@ final class WindowManager {
             if let pending = pendingNewWindow, pending.pid == pid, pending.workspace == current {
                 // The app refocused its old window while we wait for the one we asked for: stay here.
             } else if let pid, pid == activated, !shown.values.contains(ws), !config.reuseWindowApps.contains(windows[focused]?.bundleId ?? ""),
-               !workspaces[current].contains(where: { windows[$0]?.pid == pid }) {
+               !workspaces[current].contains(where: { windows[$0]?.pid == pid }), opensWindowOnCmdN(pid) {
                 // Opening an app (Dock, Spotlight, Cmd-Tab) that only has windows elsewhere asks it
                 // for a new window here. Apps that ignore cmd-N fall back to jumping to their window,
                 // unless the user has already moved on.
@@ -382,6 +385,13 @@ final class WindowManager {
         layout()
         // The app focused its new window, which is now parked.
         if let focused, ruleMoved.contains(focused) { focus(windowToFocus(in: workspaces[current], remembered: lastFocus[current])) }
+    }
+
+    private func opensWindowOnCmdN(_ pid: pid_t) -> Bool {
+        if let known = cmdNOpensWindowCache[pid] { return known }
+        let opens = cmdNOpensWindow(pid)
+        cmdNOpensWindowCache[pid] = opens
+        return opens
     }
 
     /// A window that is still being set up (no subrole yet, say) is skipped by a scan, and nothing
