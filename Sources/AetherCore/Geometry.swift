@@ -39,6 +39,36 @@ public func resized(_ ratios: [CGFloat], index: Int, delta: CGFloat, count: Int,
     return ratios
 }
 
+/// Ratios after the user dragged the edges of window `index` to `frame` with the mouse. Window k's
+/// far edge is the divider of split k, and its near edges can sit on dividers of earlier splits;
+/// edges that stayed where dwindle put them keep their divider.
+public func dragged(_ ratios: [CGFloat], index: Int, to frame: CGRect, count: Int, in rect: CGRect, gap: CGFloat, defaultRatio: CGFloat = 0.5) -> [CGFloat] {
+    guard count > 1, index < count else { return ratios }
+    var ratios = ratios + Array(repeating: defaultRatio, count: max(0, count - 1 - ratios.count))
+    let old = dwindle(count: count, in: rect, gap: gap, ratios: ratios)[index]
+    var rest = rect
+    for k in 0...min(index, count - 2) {
+        let vertical = rest.width >= rest.height
+        let second = split(rest, gap: gap, ratio: ratios[k]).1
+        // Where the first part of split k should now end.
+        var divider: CGFloat?
+        if k == index {
+            let (was, now) = vertical ? (old.maxX, frame.maxX) : (old.maxY, frame.maxY)
+            if abs(now - was) >= 1 { divider = now }
+        } else {
+            let (edge, was, now) = vertical ? (second.minX, old.minX, frame.minX) : (second.minY, old.minY, frame.minY)
+            if abs(was - edge) < 1, abs(now - was) >= 1 { divider = now - gap }
+        }
+        if let divider {
+            let start = vertical ? rest.minX : rest.minY
+            let length = (vertical ? rest.width : rest.height) - gap
+            ratios[k] = min(max((divider - start) / length, 0.1), 0.9)
+        }
+        rest = split(rest, gap: gap, ratio: ratios[k]).1
+    }
+    return ratios
+}
+
 /// Hyprland's master layout: the first window takes `ratio` of the width on the left, the rest
 /// share the right side's height equally.
 public func master(count: Int, in rect: CGRect, gap: CGFloat, ratio: CGFloat) -> [CGRect] {
