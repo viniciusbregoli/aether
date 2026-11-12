@@ -55,6 +55,48 @@ let screen = CGRect(x: 0, y: 0, width: 1000, height: 600)
     #expect(resized([0.85], index: 0, delta: 500, count: 2, in: screen, gap: 10) == [0.9])
 }
 
+@Test func draggingAnEdgeMovesItsDivider() {
+    let before = dwindle(count: 2, in: screen, gap: 10)
+    // The left window's right edge dragged 100 points right.
+    var frame = before[0]
+    frame.size.width += 100
+    let grown = dwindle(count: 2, in: screen, gap: 10, ratios: dragged([], index: 0, to: frame, count: 2, in: screen, gap: 10))
+    #expect(abs(grown[0].maxX - frame.maxX) < 0.001)
+    #expect(abs(grown[1].minX - (frame.maxX + 10)) < 0.001)
+    // The right window's left edge dragged 100 points left.
+    frame = before[1]
+    frame.origin.x -= 100
+    frame.size.width += 100
+    let left = dwindle(count: 2, in: screen, gap: 10, ratios: dragged([], index: 1, to: frame, count: 2, in: screen, gap: 10))
+    #expect(abs(left[1].minX - frame.minX) < 0.001)
+    #expect(abs(left[0].maxX - (frame.minX - 10)) < 0.001)
+    #expect(dragged([], index: 0, to: CGRect(x: 0, y: 0, width: 990, height: 600), count: 2, in: screen, gap: 10) == [0.9])
+}
+
+@Test func draggingAMiddleWindowMovesOnlyTheDraggedDivider() {
+    // Three windows: 0 on the left, 1 top right, 2 bottom right. Window 1 has its left edge on
+    // split 0 and its bottom edge on split 1.
+    let before = dwindle(count: 3, in: screen, gap: 10)
+    var frame = before[1]
+    frame.size.height += 50
+    let taller = dragged([], index: 1, to: frame, count: 3, in: screen, gap: 10)
+    #expect(taller[0] == 0.5)
+    #expect(abs(dwindle(count: 3, in: screen, gap: 10, ratios: taller)[1].maxY - frame.maxY) < 0.001)
+    frame = before[1]
+    frame.origin.x -= 40
+    frame.size.width += 40
+    let wider = dragged([], index: 1, to: frame, count: 3, in: screen, gap: 10)
+    #expect(wider[1] == 0.5)
+    #expect(abs(dwindle(count: 3, in: screen, gap: 10, ratios: wider)[1].minX - frame.minX) < 0.001)
+    // The bottom window's top edge is split 1's divider; its left edge is split 0's.
+    frame = before[2]
+    frame.origin.y -= 30
+    frame.size.height += 30
+    let up = dragged([], index: 2, to: frame, count: 3, in: screen, gap: 10)
+    #expect(up[0] == 0.5)
+    #expect(abs(dwindle(count: 3, in: screen, gap: 10, ratios: up)[2].minY - frame.minY) < 0.001)
+}
+
 @Test func accordionPeeksNeighbours() {
     let f = accordion(count: 3, focused: 1, in: screen, padding: 30)
     #expect(f[0] == CGRect(x: 0, y: 0, width: 970, height: 600))
