@@ -28,7 +28,8 @@ final class WindowManager {
     /// The tiled window the user is resizing with the mouse, until the button goes up. Its neighbors
     /// get resized while it is dragged, and their own resize notifications must not count as drags.
     private var mouseResized: CGWindowID?
-    private var mouseResizeScheduled = false
+    /// The window whose coalesced resize has yet to run.
+    private var mouseResizePending: CGWindowID?
     private var layouts: [Int: Layout] = [:]
     /// Dwindle split ratios, or a single master ratio or scrolling column width for those layouts.
     private var ratios: [Int: [CGFloat]] = [:]
@@ -128,7 +129,10 @@ final class WindowManager {
         // drags a tiled window should snap it back into place.
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [unowned self] _ in
             dragEnded = true
+            // The drag's last resize can still be queued, or not announced yet: read the final frame now.
+            if let id = mouseResized ?? mouseResizePending { followMouseResize(id, released: true) }
             mouseResized = nil
+            mouseResizePending = nil
             scheduleRefresh()
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
@@ -148,7 +152,9 @@ final class WindowManager {
         case kAXMovedNotification, kAXResizedNotification:
             guard let id = element.windowId, !animator.isAnimating(id) else { return }
             if id == borderTarget { updateBorder() }
-            if NSEvent.pressedMouseButtons & 1 != 0, mouseResized == nil || mouseResized == id { scheduleMouseResize(id) }
+            // Dragging by the title bar only moves a window; it snaps back on mouse-up instead.
+            if notification == kAXResizedNotification, NSEvent.pressedMouseButtons & 1 != 0,
+               mouseResized == nil || mouseResized == id { scheduleMouseResize(id) }
             // macOS puts a window back at its old frame once the fullscreen exit animation ends,
             // which can be after aether parked it because the user switched workspaces meanwhile.
             if nativeFullscreen.contains(id) || leftFullscreen.isHeld(id, at: ProcessInfo.processInfo.systemUptime) {
@@ -615,12 +621,17 @@ final class WindowManager {
             let d = slideDistance(for: focused.visible, others: monitors.filter { $0.id != focused.id }.map(\.frame))
             distance = CGSize(width: d.width * slide, height: d.height * slide)
         }
+        // A refresh during a mouse resize (a focus change, say) leaves the dragged window to the user.
+        // Checking the button too means a missed mouse-up can't keep a window out of the layout.
+        let dragging = NSEvent.pressedMouseButtons & 1 != 0 ? mouseResized : nil
         for (monitorId, ws) in shown {
             lastMonitor[ws] = monitorId
             lastShown[monitorId] = ws
             let offset = ws == current ? distance : .zero
             let area = workArea(of: ws)
-            for (id, frame) in zip(tiled(in: ws), tiledFrames(of: ws)) { place(id, fullscreen.contains(id) ? area : frame, offset) }
+            for (id, frame) in zip(tiled(in: ws), tiledFrames(of: ws)) where id != dragging {
+                place(id, fullscreen.contains(id) ? area : frame, offset)
+            }
             for id in workspaces[ws] where floating.contains(id) && parked.contains(id) {
                 if let frame = floatingFrames[id] { place(id, fitted(frame, in: screen(ws)), offset) }
             }
@@ -817,10 +828,12 @@ final class WindowManager {
 
     /// Resize notifications come in faster than the neighbors can relayout, so they are coalesced.
     private func scheduleMouseResize(_ id: CGWindowID) {
-        guard !mouseResizeScheduled else { return }
-        mouseResizeScheduled = true
+        guard mouseResizePending == nil else { return }
+        mouseResizePending = id
         DispatchQueue.main.async { [self] in
-            mouseResizeScheduled = false
+            // Mouse-up already handled it.
+            guard mouseResizePending == id else { return }
+            mouseResizePending = nil
             followMouseResize(id)
         }
     }
@@ -828,13 +841,12 @@ final class WindowManager {
     /// A tiled window resized with the mouse moves the dividers along its dragged edges, and the
     /// other windows of its workspace make room right away. The dragged window itself is left to
     /// the app until the button goes up, when the refresh lays it out at the new ratios.
-    private func followMouseResize(_ id: CGWindowID) {
-        guard NSEvent.pressedMouseButtons & 1 != 0, let ws = workspace(of: id), shown.values.contains(ws),
+    private func followMouseResize(_ id: CGWindowID, released: Bool = false) {
+        guard released || NSEvent.pressedMouseButtons & 1 != 0, let ws = workspace(of: id), shown.values.contains(ws),
               !fullscreen.contains(id), !parked.contains(id) else { return }
         let ids = tiled(in: ws)
-        guard ids.count > 1, let index = ids.firstIndex(of: id), let frame = windows[id]?.frame else { return }
+        guard let index = ids.firstIndex(of: id), let frame = windows[id]?.frame else { return }
         let old = tiledFrames(of: ws)[index]
-        // Dragging a window by its title bar keeps its size; it snaps back on mouse-up instead.
         guard abs(frame.width - old.width) >= 1 || abs(frame.height - old.height) >= 1 else { return }
         let area = workArea(of: ws)
         let gap = config.gapsInner(in: config.workspaces[ws])
