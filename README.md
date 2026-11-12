@@ -22,7 +22,7 @@ aether takes AeroSpace's approach and adds the Hyprland feel within that limit: 
 
 ## Features
 
-- **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion, master and scrolling layouts too, and resizing.
+- **Dwindle tiling**, Hyprland's default layout: each new window splits the focused one along its longer side. Accordion, master and scrolling layouts too, and resizing, from the keyboard or by dragging a window's edge.
 - **Workspaces in memory**, 1-9 and A-Z. Windows of hidden workspaces are parked in a screen corner, the AeroSpace way, so switching is instant and doesn't touch macOS Spaces.
 - **Multiple monitors**: each monitor shows its own workspace, and windows dragged to another monitor join the workspace shown there.
 - **Animations**: windows glide to their new place, and switching workspaces slides them sideways.
