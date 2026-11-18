@@ -14,3 +14,7 @@ import Testing
     let title = trayTitle(workspace: "2", apps: ["Safari", "Slack", "Mail"], limit: 12)
     #expect(title == "2 - Safari, Sla…")
 }
+
+@Test func noRoomForAppsShowsOnlyTheName() {
+    #expect(trayTitle(workspace: "3", apps: ["Safari"], limit: 0) == "3")
+}
