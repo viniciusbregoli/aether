@@ -683,7 +683,9 @@ final class WindowManager {
     }
 
     private func updateTray() {
-        let occupied = config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { config.workspaces[$0] }
+        let occupied = config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { index in
+            (name: config.workspaces[index], apps: workspaces[index].compactMap { windows[$0].map(appName) })
+        }
         tray.update(current: config.workspaces[current], occupied: occupied, mode: mode,
                     switchTo: { [unowned self] in execute(.workspace($0)) }, quit: { [unowned self] in execute(.quit) })
     }
@@ -782,10 +784,14 @@ final class WindowManager {
     private func windowLines(in workspace: Int) -> [String] {
         workspaces[workspace].compactMap { id in
             guard let window = windows[id] else { return nil }
-            let app = NSRunningApplication(processIdentifier: window.pid)?.localizedName ?? window.bundleId
+            let app = appName(window)
             let title: String = window.ax.get(kAXTitleAttribute) ?? ""
             return "\(id) | \(config.workspaces[workspace]) | \(app) | \(title.replacingOccurrences(of: "\n", with: " "))"
         }
+    }
+
+    private func appName(_ window: Window) -> String {
+        NSRunningApplication(processIdentifier: window.pid)?.localizedName ?? window.bundleId
     }
 
     /// AeroSpace's `move`: in dwindle that means swapping places with the neighbour on that side.
