@@ -27,7 +27,7 @@ aether takes AeroSpace's approach and adds the Hyprland feel within that limit: 
 - **Multiple monitors**: each monitor shows its own workspace, and windows dragged to another monitor join the workspace shown there.
 - **Animations**: windows glide to their new place, and switching workspaces slides them sideways.
 - **Animated gradient border** around the focused window, and optional dimming of the inactive ones.
-- **Menu bar item** with the current workspace and a menu to jump between them.
+- **Menu bar item** with the current workspace and a menu to jump between them, listing the apps on each one.
 - **Remembers your layout**: restart aether and every window goes back to its workspace.
 - **New window where you are**: opening an app whose windows are all on other workspaces gives it a new window on the current one, instead of yanking you away. Apps can opt out (Zen does by default).
 - **AeroSpace-compatible config**: bindings use AeroSpace's command names, so you can copy them from `~/.aerospace.toml`.

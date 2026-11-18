@@ -1,17 +1,18 @@
+import AetherCore
 import AppKit
 
 /// Menu bar item like AeroSpace's: shows the current workspace (and mode), and its menu lists
-/// workspaces that have windows.
+/// workspaces that have windows and the apps on each.
 final class Tray {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-    func update(current: String, occupied: [String], mode: String, switchTo: @escaping (String) -> Void, quit: @escaping () -> Void) {
+    func update(current: String, occupied: [(name: String, apps: [String])], mode: String, switchTo: @escaping (String) -> Void, quit: @escaping () -> Void) {
         item.button?.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
         item.button?.title = mode == "main" ? current : "\(current) [\(mode)]"
 
         let menu = NSMenu()
-        for name in occupied {
-            let entry = MenuAction(name) { switchTo(name) }
+        for (name, apps) in occupied {
+            let entry = MenuAction(trayTitle(workspace: name, apps: apps)) { switchTo(name) }
             entry.state = name == current ? .on : .off
             menu.addItem(entry)
         }
