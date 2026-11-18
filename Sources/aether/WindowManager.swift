@@ -683,8 +683,16 @@ final class WindowManager {
     }
 
     private func updateTray() {
+        // One lookup per process: an app with many windows would otherwise be resolved once per window.
+        var names: [pid_t: String] = [:]
+        func name(of window: Window) -> String {
+            if let known = names[window.pid] { return known }
+            let found = appName(window)
+            names[window.pid] = found
+            return found
+        }
         let occupied = config.workspaces.indices.filter { !workspaces[$0].isEmpty || $0 == current }.map { index in
-            (name: config.workspaces[index], apps: workspaces[index].compactMap { windows[$0].map(appName) })
+            (name: config.workspaces[index], apps: workspaces[index].compactMap { windows[$0].map(name(of:)) })
         }
         tray.update(current: config.workspaces[current], occupied: occupied, mode: mode,
                     switchTo: { [unowned self] in execute(.workspace($0)) }, quit: { [unowned self] in execute(.quit) })
